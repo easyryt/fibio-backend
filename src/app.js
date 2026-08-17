@@ -29,10 +29,28 @@ app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use(cors({
-  origin: process.env.FRONTEND_URL,
-  credentials: true,
-}));
+const allowedFrontendUrl = (process.env.FRONTEND_URL || "").replace(/\/$/, "");
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      const normalizedOrigin = origin.replace(/\/$/, "");
+
+      if (
+        !allowedFrontendUrl ||
+        normalizedOrigin === allowedFrontendUrl ||
+        normalizedOrigin.endsWith(".vercel.app") ||
+        normalizedOrigin.includes("localhost")
+      ) {
+        return callback(null, true);
+      }
+
+      return callback(null, true);
+    },
+    credentials: true,
+  })
+);
 app.use(
   helmet({
     crossOriginResourcePolicy: false,
