@@ -63,5 +63,8 @@ const productVariantSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+productVariantSchema.index({ product: 1 });
+productVariantSchema.index({ price: 1 });
+
 const ProductVariant = mongoose.model("ProductVariant", productVariantSchema);
 export default ProductVariant;
