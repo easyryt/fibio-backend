@@ -193,9 +193,17 @@ export const getPublicProductBySlug = async (req, res, next) => {
 
 // ---------------- GET /api/public/categories ----------------
 // All active categories as a flat array with parent populated as { _id, name }.
+// Supports optional parentOnly=true query param to return top-level categories only.
 export const getPublicCategories = async (req, res, next) => {
   try {
-    const categories = await Category.find({ isActive: true })
+    const { parentOnly } = req.query;
+    const filter = { isActive: true };
+
+    if (parentOnly === "true") {
+      filter.parent = null;
+    }
+
+    const categories = await Category.find(filter)
       .populate("parent", "_id name")
       .sort({ name: 1 });
 
