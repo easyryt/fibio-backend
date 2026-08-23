@@ -1,8 +1,6 @@
 import { z } from "zod";
+import { objectId } from "../shared.js";
 
-// ----- Shared Validators ------
-
-const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid ObjectId");
 
 const imageSchema = z.object({
   url: z.string().url("Invalid image URL"),

@@ -1,9 +1,9 @@
 import { z } from "zod";
+import { objectId } from "../shared.js";
 
-const objectId = /^[0-9a-fA-F]{24}$/;
 
 export const addToCartSchema = z.object({
-  variantId: z.string().regex(objectId, "Invalid variant ID"),
+  variantId: objectId,
   quantity: z.number().int().positive("Quantity must be at least 1"),
 });
 

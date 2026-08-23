@@ -1,7 +1,7 @@
 import { z } from "zod";
+import { objectId } from "../shared.js";
 
-const objectId = /^[0-9a-fA-F]{24}$/;
 
 export const addToWishlistSchema = z.object({
-  productId: z.string().regex(objectId, "Invalid product ID"),
+  productId: objectId,
 });

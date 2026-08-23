@@ -1,9 +1,9 @@
 import { z } from "zod";
+import { objectId } from "../shared.js";
 
-const objectId = /^[0-9a-fA-F]{24}$/;
 
 export const createMovementSchema = z.object({
-  variantId: z.string().regex(objectId, "Invalid variant ID"),
+  variantId: objectId,
   type: z.enum(["initial", "restock", "sale", "return", "damage", "correction"]),
   quantity: z.number({ invalid_type_error: "Quantity must be a number" }),
   reason: z.string().trim().max(300).optional(),

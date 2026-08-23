@@ -2,9 +2,9 @@ import mongoose from "mongoose";
 import Product from "../../models/admin/product.model.js";
 import ProductVariant from "../../models/admin/productVariant.model.js";
 import Category from "../../models/admin/category.model.js";
-import { Banner } from "../../models/admin/banner.model.js";
-import { DEFAULT_BANNERS } from "../admin/banner.controller.js";
+import { mergeBannersWithDefaults } from "../admin/banner.controller.js";
 import ApiError from "../../utils/apiError.js";
+import { escapeRegex } from "../../utils/escapeRegex.js";
 
 // ---------------- GET /api/public/products ----------------
 // Browsable product list — active products only, trimmed shape.
@@ -52,7 +52,7 @@ export const getPublicProducts = async (req, res, next) => {
       }
     }
 
-    if (search) filter.name = { $regex: search, $options: "i" };
+    if (search) filter.name = { $regex: escapeRegex(search), $options: "i" };
 
     // Price range filtering via variants
     if (minPrice || maxPrice) {
@@ -75,7 +75,8 @@ export const getPublicProducts = async (req, res, next) => {
     else if (sort === "price_desc") sortOption = { "variants.price": -1 };
     // "newest" is already the default above
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
+    const skip = (Number(page) - 1) * safeLimit;
 
     const [products, total] = await Promise.all([
       Product.find(filter)
@@ -83,7 +84,7 @@ export const getPublicProducts = async (req, res, next) => {
         .populate("category", "name")
         .sort(sortOption)
         .skip(skip)
-        .limit(Number(limit))
+        .limit(safeLimit)
         .select("name slug description images brand category featured"),
       Product.countDocuments(filter),
     ]);
@@ -101,6 +102,7 @@ export const getPublicProducts = async (req, res, next) => {
       const key = v.product.toString();
       if (!variantMap[key]) variantMap[key] = [];
       variantMap[key].push({
+        _id: v._id,
         price: v.price,
         salePrice: v.salePrice,
         stock: v.stock,
@@ -128,7 +130,7 @@ export const getPublicProducts = async (req, res, next) => {
       pagination: {
         total,
         page: Number(page),
-        pages: Math.ceil(total / Number(limit)),
+        pages: Math.ceil(total / safeLimit),
       },
     });
   } catch (err) {
@@ -216,7 +218,7 @@ export const getPublicSearchSuggestions = async (req, res, next) => {
     }
 
     const searchTerm = q.trim();
-    const regex = new RegExp(searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+    const regex = new RegExp(escapeRegex(searchTerm), "i");
 
     const [products, categories] = await Promise.all([
       Product.find({ status: "active", name: regex })
@@ -272,28 +274,7 @@ export const getPublicSearchSuggestions = async (req, res, next) => {
 // Returns active banner configurations for the storefront
 export const getPublicBanners = async (req, res, next) => {
   try {
-    const dbBanners = await Banner.find({ isActive: true }).lean();
-    const bannerMap = {};
-
-    dbBanners.forEach((b) => {
-      bannerMap[b.key] = b;
-    });
-
-    const keys = ["hero", "secondary-left", "secondary-right", "bottom"];
-    const result = {};
-
-    keys.forEach((key) => {
-      if (bannerMap[key]) {
-        result[key] = {
-          ...DEFAULT_BANNERS[key],
-          ...bannerMap[key],
-          image: bannerMap[key].image?.url ? bannerMap[key].image : DEFAULT_BANNERS[key].image,
-        };
-      } else {
-        result[key] = DEFAULT_BANNERS[key];
-      }
-    });
-
+    const result = await mergeBannersWithDefaults({ isActive: true });
     res.status(200).json({ success: true, data: result });
   } catch (err) {
     next(err);
