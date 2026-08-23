@@ -120,9 +120,24 @@ export const getProducts = async (req, res, next) => {
       Product.countDocuments(filter),
     ]);
 
+    const productIds = products.map((p) => p._id);
+    const allVariants = await ProductVariant.find({ product: { $in: productIds } });
+
+    const variantMap = {};
+    for (const v of allVariants) {
+      const key = v.product.toString();
+      if (!variantMap[key]) variantMap[key] = [];
+      variantMap[key].push(v);
+    }
+
+    const data = products.map((p) => ({
+      ...p.toObject(),
+      variants: variantMap[p._id.toString()] || [],
+    }));
+
     res.status(200).json({
       success: true,
-      data: products,
+      data,
       pagination: {
         total,
         page: Number(page),
@@ -181,6 +196,8 @@ export const updateProduct = async (req, res, next) => {
     });
     if (!product) throw new ApiError(404, "Product not found");
 
+    const variants = await ProductVariant.find({ product: product._id });
+
     await logActivity({
       userId: req.user.id,
       action: "update",
@@ -189,7 +206,7 @@ export const updateProduct = async (req, res, next) => {
       description: `Updated product: ${product.name}`,
     });
 
-    res.status(200).json({ success: true, data: product });
+    res.status(200).json({ success: true, data: { ...product.toObject(), variants } });
   } catch (err) {
     next(err);
   }
