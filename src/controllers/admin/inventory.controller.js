@@ -37,14 +37,15 @@ export const createMovement = async (req, res, next) => {
 export const getMovementsByVariant = async (req, res, next) => {
   try {
     const { page = 1, limit = 20 } = req.query;
-    const skip = (Number(page) - 1) * Number(limit);
+    const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
+    const skip = (Number(page) - 1) * safeLimit;
 
     const [movements, total] = await Promise.all([
       InventoryMovement.find({ variant: req.params.variantId })
         .populate("user", "name role")
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit)),
+        .limit(safeLimit),
       InventoryMovement.countDocuments({ variant: req.params.variantId }),
     ]);
 
@@ -54,7 +55,7 @@ export const getMovementsByVariant = async (req, res, next) => {
       pagination: {
         total,
         page: Number(page),
-        pages: Math.ceil(total / Number(limit)),
+        pages: Math.ceil(total / safeLimit),
       },
     });
   } catch (err) {

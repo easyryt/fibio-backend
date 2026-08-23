@@ -436,14 +436,15 @@ export const getImportJobs = async (req, res, next) => {
     const filter = { user: req.user.id };
     if (status) filter.status = status;
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
+    const skip = (Number(page) - 1) * safeLimit;
 
     const [jobs, total] = await Promise.all([
       ImportJob.find(filter)
         .select("fileName status successCount skippedCount totalProducts createdAt")
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit)),
+        .limit(safeLimit),
       ImportJob.countDocuments(filter),
     ]);
 
@@ -453,7 +454,7 @@ export const getImportJobs = async (req, res, next) => {
       pagination: {
         total,
         page: Number(page),
-        pages: Math.ceil(total / Number(limit)),
+        pages: Math.ceil(total / safeLimit),
       },
     });
   } catch (err) {

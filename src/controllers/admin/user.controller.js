@@ -1,5 +1,6 @@
 import User from "../../models/admin/user.model.js";
 import ApiError from "../../utils/apiError.js";
+import { escapeRegex } from "../../utils/escapeRegex.js";
 import { logActivity } from "../../utils/activityLogger.js";
 import RefreshToken from "../../models/admin/refreshToken.model.js";
 
@@ -21,19 +22,20 @@ export const getUsers = async (req, res, next) => {
     const filter = {};
     if (role) filter.role = role;
     if (isActive !== undefined) filter.isActive = isActive === "true";
-    if (search) filter.name = { $regex: search, $options: "i" };
+    if (search) filter.name = { $regex: escapeRegex(search), $options: "i" };
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
+    const skip = (Number(page) - 1) * safeLimit;
 
     const [users, total] = await Promise.all([
-      User.find(filter).sort({ createdAt: -1 }).skip(skip).limit(Number(limit)),
+      User.find(filter).sort({ createdAt: -1 }).skip(skip).limit(safeLimit),
       User.countDocuments(filter),
     ]);
 
     res.status(200).json({
       success: true,
       data: users,
-      pagination: { total, page: Number(page), pages: Math.ceil(total / Number(limit)) },
+      pagination: { total, page: Number(page), pages: Math.ceil(total / safeLimit) },
     });
   } catch (err) {
     next(err);
@@ -53,10 +55,18 @@ export const getUserById = async (req, res, next) => {
 
 export const updateUser = async (req, res, next) => {
   try {
-    const updates = { ...req.body };
+    // Explicit allowlist — only these fields can be changed through this endpoint.
+    // Using a spread of req.body would be a latent vulnerability: if a new field
+    // (e.g. password) is ever added to the validation schema, findByIdAndUpdate
+    // bypasses the pre-save hook and would store it unhashed.
+    const { name, role, isActive } = req.body;
+    const updates = {};
+    if (name !== undefined) updates.name = name;
+    if (role !== undefined) updates.role = role;
+    if (isActive !== undefined) updates.isActive = isActive;
 
     // prevent a Super Admin from demoting/deactivating themselves
-    if (req.params.id === req.user.id && (updates.role || updates.isActive === false)) {
+    if (String(req.params.id) === String(req.user.id) && (updates.role || updates.isActive === false)) {
       throw new ApiError(400, "You cannot change your own role or deactivate your own account");
     }
 
@@ -82,7 +92,7 @@ export const updateUser = async (req, res, next) => {
 
 export const deleteUser = async (req, res, next) => {
   try {
-    if (req.params.id === req.user.id) {
+    if (String(req.params.id) === String(req.user.id)) {
       throw new ApiError(400, "You cannot delete your own account");
     }
 

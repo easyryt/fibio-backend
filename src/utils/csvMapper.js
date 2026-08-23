@@ -3,16 +3,9 @@ import Brand from "../models/admin/brand.model.js";
 import Product from "../models/admin/product.model.js";
 import ProductVariant from "../models/admin/productVariant.model.js";
 import { slugify, generateUniqueSlug } from "./slugify.js";
+import { escapeRegex } from "./escapeRegex.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-/**
- * Escapes regex metacharacters so a user-supplied category/brand name is
- * treated as a literal string inside a $regex query.
- */
-function escapeRegex(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 
 /**
  * Case-insensitive, whitespace-trimmed findOne by name + optional parent.

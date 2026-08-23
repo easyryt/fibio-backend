@@ -3,16 +3,11 @@ import CustomerRefreshToken from "../../models/customer/customerRefreshToken.mod
 import {
   generateCustomerAccessToken,
   generateRefreshToken,
+  getRefreshTokenExpiryDate,
 } from "../../utils/token.js";
 import ApiError from "../../utils/apiError.js";
-import { config } from "../../config/config.js";
 
 const COOKIE_NAME = "customerRefreshToken";
-
-const getRefreshTokenExpiryDate = () => {
-  const days = parseInt(config.jwtSecret.refreshExpiry); // "7d" -> 7
-  return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-};
 
 const cookieOptions = {
   httpOnly: true,

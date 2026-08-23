@@ -4,6 +4,7 @@ import Category from "../../models/admin/category.model.js";
 import Brand from "../../models/admin/brand.model.js";
 import ApiError from "../../utils/apiError.js";
 import { generateUniqueSlug } from "../../utils/slugify.js";
+import { escapeRegex } from "../../utils/escapeRegex.js";
 import { logActivity } from "../../utils/activityLogger.js";
 import { adjustStock } from "../../utils/inventory.js";
 import mongoose from "mongoose";
@@ -104,9 +105,10 @@ export const getProducts = async (req, res, next) => {
 
     if (status) filter.status = status;
     if (featured !== undefined) filter.featured = featured === "true";
-    if (search) filter.name = { $regex: search, $options: "i" };
+    if (search) filter.name = { $regex: escapeRegex(search), $options: "i" };
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
+    const skip = (Number(page) - 1) * safeLimit;
 
     const [products, total] = await Promise.all([
       Product.find(filter)
@@ -114,7 +116,7 @@ export const getProducts = async (req, res, next) => {
         .populate("brand", "name slug")
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit)),
+        .limit(safeLimit),
       Product.countDocuments(filter),
     ]);
 
@@ -124,7 +126,7 @@ export const getProducts = async (req, res, next) => {
       pagination: {
         total,
         page: Number(page),
-        pages: Math.ceil(total / Number(limit)),
+        pages: Math.ceil(total / safeLimit),
       },
     });
   } catch (err) {

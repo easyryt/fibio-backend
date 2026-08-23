@@ -2,17 +2,20 @@ import Cart from "../../models/customer/cart.model.js";
 import ProductVariant from "../../models/admin/productVariant.model.js";
 import ApiError from "../../utils/apiError.js";
 
+// Shared populate chain — used by every cart endpoint that returns the populated cart.
+const populateCart = (cartId) =>
+  Cart.findById(cartId).populate({
+    path: "items.variant",
+    select: "sku price salePrice stock images product",
+    populate: { path: "product", select: "name slug images" },
+  });
+
 // ---------------- GET /api/customers/cart ----------------
 export const getCart = async (req, res, next) => {
   try {
-    let cart = await Cart.findOne({ customer: req.customer.id }).populate({
-      path: "items.variant",
-      select: "sku price salePrice stock images product",
-      populate: {
-        path: "product",
-        select: "name slug images",
-      },
-    });
+    let cart = await populateCart(
+      (await Cart.findOne({ customer: req.customer.id }))?._id
+    );
 
     if (!cart) {
       // find-or-create: return an empty cart instead of 404
@@ -64,11 +67,7 @@ export const addToCart = async (req, res, next) => {
 
     await cart.save();
 
-    const populated = await Cart.findById(cart._id).populate({
-      path: "items.variant",
-      select: "sku price salePrice stock images product",
-      populate: { path: "product", select: "name slug images" },
-    });
+    const populated = await populateCart(cart._id);
 
     res.status(200).json({
       success: true,
@@ -98,11 +97,7 @@ export const updateCartItem = async (req, res, next) => {
     if (quantity <= 0) {
       cart.items.splice(itemIndex, 1);
       await cart.save();
-      const populated = await Cart.findById(cart._id).populate({
-        path: "items.variant",
-        select: "sku price salePrice stock images product",
-        populate: { path: "product", select: "name slug images" },
-      });
+      const populated = await populateCart(cart._id);
       return res.status(200).json({ success: true, data: populated });
     }
 
@@ -118,11 +113,7 @@ export const updateCartItem = async (req, res, next) => {
     cart.items[itemIndex].quantity = clamped;
     await cart.save();
 
-    const populated = await Cart.findById(cart._id).populate({
-      path: "items.variant",
-      select: "sku price salePrice stock images product",
-      populate: { path: "product", select: "name slug images" },
-    });
+    const populated = await populateCart(cart._id);
 
     res.status(200).json({
       success: true,
@@ -147,11 +138,7 @@ export const removeCartItem = async (req, res, next) => {
     );
     await cart.save();
 
-    const populated = await Cart.findById(cart._id).populate({
-      path: "items.variant",
-      select: "sku price salePrice stock images product",
-      populate: { path: "product", select: "name slug images" },
-    });
+    const populated = await populateCart(cart._id);
 
     res.status(200).json({ success: true, data: populated });
   } catch (err) {

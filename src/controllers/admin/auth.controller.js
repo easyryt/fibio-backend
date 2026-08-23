@@ -1,13 +1,9 @@
 import User from "../../models/admin/user.model.js";
 import RefreshToken from "../../models/admin/refreshToken.model.js";
-import { generateAccessToken, generateRefreshToken } from "../../utils/token.js";
+import { generateAccessToken, generateRefreshToken, getRefreshTokenExpiryDate } from "../../utils/token.js";
 import ApiError from "../../utils/apiError.js";
 import { config } from "../../config/config.js";
 
-const getRefreshTokenExpiryDate = () => {
-  const days = parseInt(config.jwtSecret.refreshExpiry); // "7d" -> 7
-  return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-};
 
 // ---------------- REGISTER (Super Admin only) ----------------
 export const register = async (req, res, next) => {
