@@ -519,13 +519,103 @@ describe("POST /api/products/import/confirm", () => {
 
     expect(confirmRes.status).toBe(201);
 
-    const category = await Category.findOne({ name: "Headwear" });
+    const category = await Category.findOne({ name: "Apparel" });
     expect(category).not.toBeNull();
     expect(category.image.url).toBe("https://ik.imagekit.io/test/uploaded-cat-img.jpg");
     expect(category.image.fileId).toBe("cat_ik_888");
 
     fetchSpy.mockRestore();
     uploadSpy.mockRestore();
+  });
+
+  it("correctly assigns higher price as regular price and lower price as sale price (prevents swapping)", async () => {
+    const header =
+      "Title,URL handle,Description,Vendor,Product category,SKU,Barcode,Option1 name,Option1 value,Price,Compare-at price,Inventory quantity,Weight value (grams)";
+    const csv = [
+      header,
+      "Swapped Price Shoe,swapped-shoe,Desc,Nike,Apparel > Shoes,SKU-SWAP-001,111,Color,Black,4499,5499,10,500",
+    ].join("\n") + "\n";
+
+    const previewRes = await request(app)
+      .post("/api/products/import/preview")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .attach("file", Buffer.from(csv), "swap.csv");
+
+    expect(previewRes.status).toBe(200);
+    const variantPreview = previewRes.body.data.products[0].variants[0];
+    expect(variantPreview.price).toBe(5499);
+    expect(variantPreview.salePrice).toBe(4499);
+
+    const confirmRes = await request(app)
+      .post("/api/products/import/confirm")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ fileName: "swap.csv", products: previewRes.body.data.products });
+
+    expect(confirmRes.status).toBe(201);
+
+    const variant = await ProductVariant.findOne({ sku: "SKU-SWAP-001" });
+    expect(variant.price).toBe(5499);
+    expect(variant.salePrice).toBe(4499);
+  });
+
+  it("parses Cost per item and stores it as costPrice on variant", async () => {
+    const header =
+      "Title,URL handle,Description,Vendor,Product category,SKU,Barcode,Option1 name,Option1 value,Price,Compare-at price,Cost per item,Inventory quantity";
+    const csv = [
+      header,
+      "Cost Item Jacket,cost-jacket,Desc,Nike,Apparel > Jackets,SKU-COST-001,111,Color,Black,4499,5499,2800,10",
+    ].join("\n") + "\n";
+
+    const previewRes = await request(app)
+      .post("/api/products/import/preview")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .attach("file", Buffer.from(csv), "cost.csv");
+
+    expect(previewRes.status).toBe(200);
+    expect(previewRes.body.data.products[0].variants[0].costPrice).toBe(2800);
+
+    const confirmRes = await request(app)
+      .post("/api/products/import/confirm")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ fileName: "cost.csv", products: previewRes.body.data.products });
+
+    expect(confirmRes.status).toBe(201);
+    const variant = await ProductVariant.findOne({ sku: "SKU-COST-001" });
+    expect(variant.costPrice).toBe(2800);
+  });
+
+  it("skips overwriting top-level category image if it already has an image set", async () => {
+    // Pre-create parent category with an image
+    await Category.create({
+      name: "Apparel",
+      slug: "apparel",
+      image: { url: "https://ik.imagekit.io/existing-parent-img.jpg", fileId: "existing_01" },
+    });
+
+    const header =
+      "Title,URL handle,Description,Vendor,Product category,Category image URL,SKU,Barcode,Option1 name,Option1 value,Price,Compare-at price,Inventory quantity";
+    const csv = [
+      header,
+      "New Apparel Item,new-apparel-item,Desc,Nike,Apparel > Shirts,https://cdn.example.com/new-apparel-banner.jpg,SKU-CAT-EXIST-01,111,Color,Red,1999,,10",
+    ].join("\n") + "\n";
+
+    const previewRes = await request(app)
+      .post("/api/products/import/preview")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .attach("file", Buffer.from(csv), "exist-cat.csv");
+
+    const confirmRes = await request(app)
+      .post("/api/products/import/confirm")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ fileName: "exist-cat.csv", products: previewRes.body.data.products });
+
+    expect(confirmRes.status).toBe(201);
+    expect(confirmRes.body.data.errors).toContain(
+      'Top-level category "Apparel" already has an image set; new CSV image link was skipped.'
+    );
+
+    const parentCat = await Category.findOne({ name: "Apparel" });
+    expect(parentCat.image.url).toBe("https://ik.imagekit.io/existing-parent-img.jpg");
   });
 });
 

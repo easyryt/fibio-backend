@@ -32,6 +32,10 @@ const productVariantSchema = new mongoose.Schema(
       type: Number,
       min: 0,
     },
+    costPrice: {
+      type: Number,
+      min: 0,
+    },
     stock: {
       type: Number,
       required: true,

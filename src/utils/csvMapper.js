@@ -68,14 +68,50 @@ const resolveBrand = async (vendorName) => {
   return brand ? { existing: true, id: brand._id } : { existing: false, id: null };
 };
 
-// ── Row grouping / mapping ────────────────────────────────────────────────────
+// ── Standard Header Candidates (2–4 clean options per field) ───────────────────
+
+export const HEADER_CANDIDATES = {
+  handle: ["URL handle", "Handle", "Slug"],
+  title: ["Title", "Product Name", "Name"],
+  sku: ["SKU", "Variant SKU"],
+  barcode: ["Barcode", "Variant Barcode"],
+  price: ["Price", "Sale Price", "Discount Price"],
+  compareAtPrice: ["Compare-at price", "Compare-at Price", "Regular Price", "Original Price"],
+  costPrice: ["Cost per item", "Cost Per Item", "Cost Price", "Cost"],
+  stock: ["Inventory quantity", "Stock", "Quantity"],
+  vendor: ["Vendor", "Brand"],
+  category: ["Product category", "Category"],
+  productImage: ["Product Image URL", "Image Src", "Image URL"],
+  position: ["Image Position", "Position"],
+  altText: ["Image Alt Text", "Alt Text"],
+  variantImage: ["Variant Image URL", "Variant Image"],
+  categoryImage: ["Category Image URL", "Category Image"],
+  weight: ["Weight value (grams)", "Weight"],
+  description: ["Description", "Body (HTML)", "Body"],
+  seoTitle: ["SEO title", "SEO Title"],
+  seoDescription: ["SEO description", "SEO Description"],
+};
+
+const getRowValue = (row, candidateKeys) => {
+  if (!row) return "";
+  const rowKeys = Object.keys(row);
+  for (const candidate of candidateKeys) {
+    const candidateLower = candidate.trim().toLowerCase();
+    const actualKey = rowKeys.find((k) => k.trim().toLowerCase() === candidateLower);
+    if (actualKey && row[actualKey] !== undefined && row[actualKey] !== null) {
+      const str = String(row[actualKey]).trim();
+      if (str !== "") return str;
+    }
+  }
+  return "";
+};
 
 // groups raw CSV rows into { product, variants[] } structures by "URL handle"
 export const groupRowsByProduct = (rows) => {
   const groups = new Map();
 
   for (const row of rows) {
-    const handle = row["URL handle"];
+    const handle = getRowValue(row, HEADER_CANDIDATES.handle);
     if (!handle) continue; // rows without a handle can't be grouped — flagged as an error elsewhere
 
     if (!groups.has(handle)) {
@@ -84,8 +120,9 @@ export const groupRowsByProduct = (rows) => {
 
     const group = groups.get(handle);
 
-    // the parent row is the one carrying Title (Shopify leaves it blank on variant-only rows)
-    if (row.Title && row.Title.trim() !== "") {
+    // the parent row is the one carrying Title/Name (Shopify leaves it blank on variant-only rows)
+    const title = getRowValue(row, HEADER_CANDIDATES.title);
+    if (title) {
       group.parentRow = row;
     }
     group.variantRows.push(row);
@@ -94,70 +131,33 @@ export const groupRowsByProduct = (rows) => {
   return Array.from(groups.entries()).map(([handle, group]) => ({ handle, ...group }));
 };
 
-const getRowValue = (row, candidateKeys) => {
-  for (const key of candidateKeys) {
-    if (row[key] !== undefined && row[key] !== null) {
-      const str = String(row[key]).trim();
-      if (str !== "") return str;
-    }
-  }
-  return "";
-};
-
 // converts one grouped { parentRow, variantRows } into your Product/Variant shape,
 // with validation errors attached per field
 export const mapGroupToProduct = async (group) => {
   const errors = [];
   const { parentRow, variantRows, handle } = group;
 
-  if (!parentRow) {
+  const title = getRowValue(parentRow, HEADER_CANDIDATES.title);
+  const vendorStr = getRowValue(parentRow, HEADER_CANDIDATES.vendor);
+  const categoryStr = getRowValue(parentRow, HEADER_CANDIDATES.category);
+
+  if (!parentRow || !title) {
     errors.push(`No parent row (row with Title) found for handle "${handle}"`);
   }
 
-  const category = await resolveCategoryPath(parentRow?.["Product category"]);
-  const brand = await resolveBrand(parentRow?.Vendor);
+  const category = await resolveCategoryPath(categoryStr);
+  const brand = await resolveBrand(vendorStr);
 
-  if (!parentRow?.Vendor) errors.push("Missing Vendor (Brand)");
-  if (!parentRow?.["Product category"]) errors.push("Missing Product category");
+  if (!vendorStr) errors.push("Missing Vendor (Brand)");
+  if (!categoryStr) errors.push("Missing Product category");
 
-  // Extract product-level images (supporting multiple CSV header variants like "Product image URL", "Image Src", etc.)
+  // Extract product-level images (supporting 2-4 candidate header options)
   const productImages = [];
   const seenUrls = new Set();
 
-  const productImageKeys = [
-    "Product image URL",
-    "Product Image URL",
-    "Image Src",
-    "Image SRC",
-    "Image URL",
-    "Image Url",
-  ];
-  const positionKeys = ["Image position", "Image Position", "Position"];
-  const altTextKeys = ["Image alt text", "Image Alt Text", "Alt Text", "Alt text"];
-  const variantImageKeys = [
-    "Variant image URL",
-    "Variant Image URL",
-    "Variant Image",
-    "Variant image",
-    "Variant Image Url",
-  ];
-
-  const categoryImageKeys = [
-    "Category image URL",
-    "Category Image URL",
-    "Category image",
-    "Category Image",
-    "Category Image Url",
-    "Category image url",
-    "Category Img",
-    "Category img",
-    "Category Image Link",
-    "Category image link",
-  ];
-
   let categoryImage = null;
   for (const row of variantRows) {
-    const imgUrl = getRowValue(row, categoryImageKeys);
+    const imgUrl = getRowValue(row, HEADER_CANDIDATES.categoryImage);
     if (imgUrl) {
       categoryImage = imgUrl;
       break;
@@ -165,12 +165,12 @@ export const mapGroupToProduct = async (group) => {
   }
 
   for (const row of variantRows) {
-    const src = getRowValue(row, productImageKeys);
+    const src = getRowValue(row, HEADER_CANDIDATES.productImage);
     if (src && !seenUrls.has(src)) {
       seenUrls.add(src);
-      const posRaw = getRowValue(row, positionKeys);
+      const posRaw = getRowValue(row, HEADER_CANDIDATES.position);
       const position = posRaw && !isNaN(Number(posRaw)) ? Number(posRaw) : 0;
-      const altText = getRowValue(row, altTextKeys);
+      const altText = getRowValue(row, HEADER_CANDIDATES.altText);
       productImages.push({
         url: src,
         position,
@@ -182,11 +182,54 @@ export const mapGroupToProduct = async (group) => {
 
   const variants = variantRows.map((row, index) => {
     const variantErrors = [];
-    if (!row.SKU) variantErrors.push("Missing SKU");
-    if (!row.Price || isNaN(Number(row.Price))) variantErrors.push("Missing or invalid Price");
-    if (row["Inventory quantity"] && isNaN(Number(row["Inventory quantity"]))) {
+    const sku = getRowValue(row, HEADER_CANDIDATES.sku);
+    const barcode = getRowValue(row, HEADER_CANDIDATES.barcode) || undefined;
+    const rawPrice = getRowValue(row, HEADER_CANDIDATES.price);
+    const rawComparePrice = getRowValue(row, HEADER_CANDIDATES.compareAtPrice);
+    const rawStock = getRowValue(row, HEADER_CANDIDATES.stock);
+
+    if (!sku) variantErrors.push("Missing SKU");
+
+    // Price extraction logic:
+    // In our database model (productVariant.model.js):
+    // - `price`: Regular / Original Price (e.g. ₹5,499)
+    // - `salePrice`: Discounted / Sale Price (e.g. ₹4,499)
+    const numPrice = rawPrice && !isNaN(Number(rawPrice)) ? Number(rawPrice) : null;
+    const numCompare = rawComparePrice && !isNaN(Number(rawComparePrice)) ? Number(rawComparePrice) : null;
+
+    if (numPrice === null && numCompare === null) {
+      variantErrors.push("Missing or invalid Price");
+    }
+
+    let price = 0;
+    let salePrice = undefined;
+
+    if (numPrice !== null && numCompare !== null) {
+      if (numPrice === numCompare) {
+        price = numPrice;
+        salePrice = undefined;
+      } else {
+        // Regular/Original price is always the higher price.
+        // Discounted/Sale price is the lower price.
+        price = Math.max(numPrice, numCompare);
+        salePrice = Math.min(numPrice, numCompare);
+      }
+    } else if (numPrice !== null) {
+      price = numPrice;
+      salePrice = undefined;
+    } else if (numCompare !== null) {
+      price = numCompare;
+      salePrice = undefined;
+    }
+
+    const rawCost = getRowValue(row, HEADER_CANDIDATES.costPrice);
+    const costPrice =
+      rawCost && !isNaN(Number(rawCost)) && Number(rawCost) >= 0 ? Number(rawCost) : undefined;
+
+    if (rawStock && isNaN(Number(rawStock))) {
       variantErrors.push("Invalid Inventory quantity");
     }
+    const stock = rawStock ? Number(rawStock) || 0 : 0;
 
     const options = [];
     if (row["Option1 name"] && row["Option1 value"]) {
@@ -199,19 +242,21 @@ export const mapGroupToProduct = async (group) => {
       options.push({ name: row["Option3 name"], value: row["Option3 value"] });
     }
 
-    const variantImage = getRowValue(row, variantImageKeys) || null;
+    const variantImage = getRowValue(row, HEADER_CANDIDATES.variantImage) || null;
+    const rawWeight = getRowValue(row, HEADER_CANDIDATES.weight);
 
     return {
       rowIndex: index,
-      sku: row.SKU,
-      barcode: row.Barcode || undefined,
-      price: Number(row.Price) || 0,
-      salePrice: row["Compare-at price"] ? Number(row["Compare-at price"]) : undefined,
-      stock: Number(row["Inventory quantity"]) || 0,
+      sku,
+      barcode,
+      price,
+      salePrice,
+      costPrice,
+      stock,
       options,
       image: variantImage,
-      weight: row["Weight value (grams)"]
-        ? { value: Number(row["Weight value (grams)"]), unit: "g" }
+      weight: rawWeight && !isNaN(Number(rawWeight))
+        ? { value: Number(rawWeight), unit: "g" }
         : undefined,
       errors: variantErrors,
       valid: variantErrors.length === 0,
@@ -236,16 +281,16 @@ export const mapGroupToProduct = async (group) => {
   }));
 
   const productData = {
-    name: parentRow?.Title,
-    description: parentRow?.Description,
-    seoTitle: parentRow?.["SEO title"],
-    seoDescription: parentRow?.["SEO description"],
+    name: title,
+    description: getRowValue(parentRow, HEADER_CANDIDATES.description),
+    seoTitle: getRowValue(parentRow, HEADER_CANDIDATES.seoTitle),
+    seoDescription: getRowValue(parentRow, HEADER_CANDIDATES.seoDescription),
     images: productImages,
     optionTypes,
     categoryPath: category.path,
     categoryResolved: category.finalExists,
     categoryImage,
-    brandName: parentRow?.Vendor,
+    brandName: vendorStr,
     brandResolved: brand.existing,
     brandId: brand.id,
   };
@@ -284,15 +329,16 @@ export const findOrCreateCategoryPath = async (
   createdCategoryIds,
   categoryImage = null
 ) => {
-  if (!categoryPathString) return null;
+  if (!categoryPathString) return { categoryId: null, notice: null };
 
   const levels = categoryPathString.split(">").map((s) => s.trim());
   let parentId = null;
   let finalCategoryId = null;
+  let notice = null;
 
   for (let i = 0; i < levels.length; i++) {
     const levelName = levels[i];
-    const isLeaf = i === levels.length - 1;
+    const isParent = i === 0; // attach category image to the top-level parent category
 
     // Case-insensitive find — also sees this transaction's own uncommitted writes
     let category = await findCategoryCI(levelName, parentId, session);
@@ -305,22 +351,29 @@ export const findOrCreateCategoryPath = async (
       const slug = await generateUniqueSlug(Category, levelName, session);
       const catDoc = { name: levelName.trim(), slug, parent: parentId };
 
-      if (isLeaf && categoryImage && categoryImage.url) {
+      if (isParent && categoryImage && categoryImage.url) {
         catDoc.image = categoryImage;
       }
 
       [category] = await Category.create([catDoc], { session });
       createdCategoryIds.push(category._id);
-    } else if (isLeaf && categoryImage && categoryImage.url && (!category.image || !category.image.url)) {
-      category.image = categoryImage;
-      await category.save({ session });
+    } else if (isParent && categoryImage && categoryImage.url) {
+      if (!category.image || !category.image.url) {
+        // Parent exists but has no image -> update with new image
+        category.image = categoryImage;
+        await category.save({ session });
+        notice = `Updated image for existing top-level category "${category.name}".`;
+      } else {
+        // Parent exists and already has an image -> keep existing image intact, inform admin
+        notice = `Top-level category "${category.name}" already has an image set; new CSV image link was skipped.`;
+      }
     }
 
     parentId = category._id;
     finalCategoryId = category._id;
   }
 
-  return finalCategoryId;
+  return { categoryId: finalCategoryId, notice };
 };
 
 /**

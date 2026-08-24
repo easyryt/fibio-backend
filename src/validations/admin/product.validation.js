@@ -85,6 +85,13 @@ const baseVariantSchema = z.object({
     .min(0)
     .optional(),
 
+  costPrice: z
+    .number({
+      invalid_type_error: "Cost price must be a number",
+    })
+    .min(0)
+    .optional(),
+
   stock: z
     .number({
       invalid_type_error: "Stock must be a number",

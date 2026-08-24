@@ -9,6 +9,7 @@ import {
   findOrCreateBrand,
   groupRowsByProduct,
   mapGroupToProduct,
+  HEADER_CANDIDATES,
 } from "../../utils/csvMapper.js";
 import { generateUniqueSlug } from "../../utils/slugify.js";
 import { logActivity } from "../../utils/activityLogger.js";
@@ -59,11 +60,27 @@ export const previewCsvImport = async (req, res, next) => {
     const rows = parseCsvBuffer(req.file.buffer);
     if (rows.length === 0) throw new ApiError(400, "CSV file is empty");
 
-    const requiredColumns = ["Title", "URL handle", "SKU", "Price"];
     const actualColumns = Object.keys(rows[0]);
-    const missingColumns = requiredColumns.filter((col) => !actualColumns.includes(col));
-    if (missingColumns.length > 0) {
-      throw new ApiError(400, `Missing required columns: ${missingColumns.join(", ")}`);
+    const requiredFieldGroups = [
+      { label: "Title / Product Name", candidates: HEADER_CANDIDATES.title },
+      { label: "URL handle / Slug", candidates: HEADER_CANDIDATES.handle },
+      { label: "SKU", candidates: HEADER_CANDIDATES.sku },
+      {
+        label: "Price",
+        candidates: [...HEADER_CANDIDATES.price, ...HEADER_CANDIDATES.compareAtPrice],
+      },
+    ];
+
+    const missingGroups = requiredFieldGroups.filter(
+      (group) =>
+        !group.candidates.some((candidate) =>
+          actualColumns.some((col) => col.trim().toLowerCase() === candidate.trim().toLowerCase())
+        )
+    );
+
+    if (missingGroups.length > 0) {
+      const missingLabels = missingGroups.map((g) => g.label);
+      throw new ApiError(400, `Missing required columns: ${missingLabels.join(", ")}`);
     }
 
     const groups = groupRowsByProduct(rows);
@@ -214,12 +231,16 @@ export const confirmCsvImport = async (req, res, next) => {
         continue;
       }
 
-      const categoryId = await findOrCreateCategoryPath(
+      const { categoryId, notice: categoryNotice } = await findOrCreateCategoryPath(
         item.product.categoryPath?.map((p) => p.name).join(">"),
         session,
         createdCategoryIds,
         preparedCategoryImage
       );
+      if (categoryNotice) {
+        errors.push(categoryNotice);
+      }
+
       const brandId = await findOrCreateBrand(item.product.brandName, session, createdBrandIds);
 
       if (!categoryId || !brandId) {
@@ -254,6 +275,7 @@ export const confirmCsvImport = async (req, res, next) => {
         barcode: v.barcode,
         price: v.price,
         salePrice: v.salePrice,
+        costPrice: v.costPrice,
         stock: 0,
         options: v.options,
         images: preparedVariantImagesList[index] || [],
