@@ -3,50 +3,34 @@ import { Banner } from "../../models/admin/banner.model.js";
 export const DEFAULT_BANNERS = {
   hero: {
     key: "hero",
-    title: "TRUSTED BY MILLIONS",
-    subtitle: "Discover trending products, limited-time offers, and everyday essentials at unbeatable wholesale prices.",
-    image: { url: "/hero-banner.png", fileId: "" },
-    href: "/category/all",
-    ctaText: "Shop Now",
-    showGradient: true,
-    overlayColor: "#033936",
-    placement: "left",
-    isActive: true,
-  },
-  "secondary-left": {
-    key: "secondary-left",
-    title: "Jewellery",
-    subtitle: "Premium collection for every occasion",
-    image: { url: "/secondary-left.png", fileId: "" },
-    href: "/category/jewellery",
-    ctaText: "Explore Now",
-    showGradient: true,
-    overlayColor: "background",
-    placement: "left",
-    isActive: true,
-  },
-  "secondary-right": {
-    key: "secondary-right",
-    title: "Mobile Accessories",
-    subtitle: "Trendy accessories for smart devices",
-    image: { url: "/secondary-ryt.png", fileId: "" },
-    href: "/category/mobile-accessories",
-    ctaText: "Explore Now",
-    showGradient: true,
-    overlayColor: "background",
-    placement: "left",
-    isActive: true,
+    slides: [
+      {
+        image: { url: "/banner-1.webp", fileId: "" },
+        href: "/category/all",
+        order: 1,
+        isActive: true,
+      },
+      {
+        image: { url: "/banner-2.webp", fileId: "" },
+        href: "/category/all",
+        order: 2,
+        isActive: true,
+      },
+      {
+        image: { url: "/banner-3.webp", fileId: "" },
+        href: "/category/all",
+        order: 3,
+        isActive: true,
+      },
+    ],
   },
   bottom: {
     key: "bottom",
     title: "Buying in Bulk?",
     subtitle: "Get special tier discounts, customized tax invoices, and personalized quotations for large wholesale orders.",
-    image: { url: "/bottom-banner.png", fileId: "" },
+    image: { url: "/bottom-banner.webp", fileId: "" },
     href: "/contact-us",
     ctaText: "Request a Quote",
-    showGradient: false,
-    overlayColor: "#033936",
-    placement: "left",
     isActive: true,
   },
 };
@@ -55,7 +39,7 @@ export const DEFAULT_BANNERS = {
  * Merges DB banners with DEFAULT_BANNERS.
  * Shared by both admin getAllBanners (filter = {}) and public getPublicBanners (filter = { isActive: true }).
  * @param {Object} filter — Mongoose query filter passed to Banner.find()
- * @returns {Object} banner map keyed by slot name (hero, secondary-left, etc.)
+ * @returns {Object} banner map keyed by slot name (hero, bottom)
  */
 export const mergeBannersWithDefaults = async (filter = {}) => {
   const dbBanners = await Banner.find(filter).lean();
@@ -65,16 +49,46 @@ export const mergeBannersWithDefaults = async (filter = {}) => {
     bannerMap[b.key] = b;
   });
 
-  const keys = ["hero", "secondary-left", "secondary-right", "bottom"];
+  const keys = ["hero", "bottom"];
   const result = {};
 
   keys.forEach((key) => {
     if (bannerMap[key]) {
-      result[key] = {
-        ...DEFAULT_BANNERS[key],
-        ...bannerMap[key],
-        image: bannerMap[key].image?.url ? bannerMap[key].image : DEFAULT_BANNERS[key].image,
-      };
+      if (key === "hero") {
+        let slides = (bannerMap[key].slides && bannerMap[key].slides.length > 0)
+          ? bannerMap[key].slides
+          : DEFAULT_BANNERS.hero.slides;
+
+        slides = slides.map((s) => {
+          const u = s.image?.url || "";
+          if (typeof u === "string" && u.endsWith(".png") && u.startsWith("/")) {
+            return { ...s, image: { ...s.image, url: u.replace(/\.png$/, ".webp") } };
+          }
+          return s;
+        });
+
+        // If filtering for public view (filter.isActive), restrict to active slides
+        if (filter.isActive) {
+          slides = slides.filter((s) => s.isActive !== false);
+        }
+
+        result.hero = {
+          key: "hero",
+          slides: [...slides].sort((a, b) => (a.order || 0) - (b.order || 0)),
+        };
+      } else {
+        let bottomImg = bannerMap[key]?.image?.url ? bannerMap[key].image : DEFAULT_BANNERS[key].image;
+        if (typeof bottomImg?.url === "string" && bottomImg.url.endsWith(".png") && bottomImg.url.startsWith("/")) {
+          bottomImg = { ...bottomImg, url: bottomImg.url.replace(/\.png$/, ".webp") };
+        }
+
+        result[key] = {
+          ...DEFAULT_BANNERS[key],
+          ...bannerMap[key],
+          image: bottomImg,
+        };
+      }
+
     } else {
       result[key] = DEFAULT_BANNERS[key];
     }
@@ -105,14 +119,14 @@ export const getAllBanners = async (req, res) => {
 };
 
 /**
- * @desc Update single banner by key
+ * @desc Update single banner by key (hero or bottom)
  * @route PUT /api/banners/:key
  * @access Private (super_admin, admin only)
  */
 export const updateBannerByKey = async (req, res) => {
   try {
     const { key } = req.params;
-    const allowedKeys = ["hero", "secondary-left", "secondary-right", "bottom"];
+    const allowedKeys = ["hero", "bottom"];
 
     if (!allowedKeys.includes(key)) {
       return res.status(400).json({
@@ -121,24 +135,55 @@ export const updateBannerByKey = async (req, res) => {
       });
     }
 
-    const { title, subtitle, image, href, ctaText, showGradient, overlayColor, placement, isActive } = req.body;
+    let banner;
+    if (key === "hero") {
+      const { slides } = req.body;
+      if (!Array.isArray(slides)) {
+        return res.status(400).json({
+          success: false,
+          message: "Hero banner requires a slides array",
+        });
+      }
+      if (slides.length > 5) {
+        return res.status(400).json({
+          success: false,
+          message: "Top banner can hold a maximum of 5 banners",
+        });
+      }
 
-    const updateData = {};
-    if (title !== undefined) updateData.title = title;
-    if (subtitle !== undefined) updateData.subtitle = subtitle;
-    if (image !== undefined) updateData.image = image;
-    if (href !== undefined) updateData.href = href;
-    if (ctaText !== undefined) updateData.ctaText = ctaText;
-    if (showGradient !== undefined) updateData.showGradient = showGradient;
-    if (overlayColor !== undefined) updateData.overlayColor = overlayColor;
-    if (placement !== undefined) updateData.placement = placement;
-    if (isActive !== undefined) updateData.isActive = isActive;
+      const formattedSlides = slides.map((s, idx) => ({
+        _id: s._id,
+        image: {
+          url: s.image?.url || "",
+          fileId: s.image?.fileId || "",
+        },
+        href: s.href || "",
+        order: Number(s.order) || idx + 1,
+        isActive: s.isActive ?? true,
+      }));
 
-    const banner = await Banner.findOneAndUpdate(
-      { key },
-      { $set: updateData },
-      { new: true, upsert: true, runValidators: true }
-    );
+      banner = await Banner.findOneAndUpdate(
+        { key: "hero" },
+        { $set: { key: "hero", slides: formattedSlides } },
+        { new: true, upsert: true, runValidators: true }
+      );
+    } else {
+      const { title, subtitle, image, href, ctaText, isActive } = req.body;
+
+      const updateData = {};
+      if (title !== undefined) updateData.title = title;
+      if (subtitle !== undefined) updateData.subtitle = subtitle;
+      if (image !== undefined) updateData.image = image;
+      if (href !== undefined) updateData.href = href;
+      if (ctaText !== undefined) updateData.ctaText = ctaText;
+      if (isActive !== undefined) updateData.isActive = isActive;
+
+      banner = await Banner.findOneAndUpdate(
+        { key: "bottom" },
+        { $set: updateData },
+        { new: true, upsert: true, runValidators: true }
+      );
+    }
 
     return res.status(200).json({
       success: true,
