@@ -24,6 +24,35 @@ export const DEFAULT_BANNERS = {
       },
     ],
   },
+  budget: {
+    key: "budget",
+    slides: [
+      {
+        image: { url: "/99.WEBP", fileId: "" },
+        href: "/category/all?maxPrice=99",
+        order: 1,
+        isActive: true,
+      },
+      {
+        image: { url: "/149.WEBP", fileId: "" },
+        href: "/category/all?maxPrice=149",
+        order: 2,
+        isActive: true,
+      },
+      {
+        image: { url: "/199.WEBP", fileId: "" },
+        href: "/category/all?maxPrice=199",
+        order: 3,
+        isActive: true,
+      },
+      {
+        image: { url: "/499.WEBP", fileId: "" },
+        href: "/category/all?maxPrice=499",
+        order: 4,
+        isActive: true,
+      },
+    ],
+  },
   bottom: {
     key: "bottom",
     title: "Buying in Bulk?",
@@ -39,7 +68,7 @@ export const DEFAULT_BANNERS = {
  * Merges DB banners with DEFAULT_BANNERS.
  * Shared by both admin getAllBanners (filter = {}) and public getPublicBanners (filter = { isActive: true }).
  * @param {Object} filter — Mongoose query filter passed to Banner.find()
- * @returns {Object} banner map keyed by slot name (hero, bottom)
+ * @returns {Object} banner map keyed by slot name (hero, bottom, budget)
  */
 export const mergeBannersWithDefaults = async (filter = {}) => {
   const dbBanners = await Banner.find(filter).lean();
@@ -49,15 +78,15 @@ export const mergeBannersWithDefaults = async (filter = {}) => {
     bannerMap[b.key] = b;
   });
 
-  const keys = ["hero", "bottom"];
+  const keys = ["hero", "budget", "bottom"];
   const result = {};
 
   keys.forEach((key) => {
     if (bannerMap[key]) {
-      if (key === "hero") {
+      if (key === "hero" || key === "budget") {
         let slides = (bannerMap[key].slides && bannerMap[key].slides.length > 0)
           ? bannerMap[key].slides
-          : DEFAULT_BANNERS.hero.slides;
+          : DEFAULT_BANNERS[key].slides;
 
         slides = slides.map((s) => {
           const u = s.image?.url || "";
@@ -72,8 +101,8 @@ export const mergeBannersWithDefaults = async (filter = {}) => {
           slides = slides.filter((s) => s.isActive !== false);
         }
 
-        result.hero = {
-          key: "hero",
+        result[key] = {
+          key,
           slides: [...slides].sort((a, b) => (a.order || 0) - (b.order || 0)),
         };
       } else {
@@ -119,14 +148,14 @@ export const getAllBanners = async (req, res) => {
 };
 
 /**
- * @desc Update single banner by key (hero or bottom)
+ * @desc Update single banner by key (hero, budget, or bottom)
  * @route PUT /api/banners/:key
  * @access Private (super_admin, admin only)
  */
 export const updateBannerByKey = async (req, res) => {
   try {
     const { key } = req.params;
-    const allowedKeys = ["hero", "bottom"];
+    const allowedKeys = ["hero", "budget", "bottom"];
 
     if (!allowedKeys.includes(key)) {
       return res.status(400).json({
@@ -136,15 +165,15 @@ export const updateBannerByKey = async (req, res) => {
     }
 
     let banner;
-    if (key === "hero") {
+    if (key === "hero" || key === "budget") {
       const { slides } = req.body;
       if (!Array.isArray(slides)) {
         return res.status(400).json({
           success: false,
-          message: "Hero banner requires a slides array",
+          message: `${key} banner requires a slides array`,
         });
       }
-      if (slides.length > 5) {
+      if (key === "hero" && slides.length > 5) {
         return res.status(400).json({
           success: false,
           message: "Top banner can hold a maximum of 5 banners",
@@ -163,8 +192,8 @@ export const updateBannerByKey = async (req, res) => {
       }));
 
       banner = await Banner.findOneAndUpdate(
-        { key: "hero" },
-        { $set: { key: "hero", slides: formattedSlides } },
+        { key },
+        { $set: { key, slides: formattedSlides } },
         { new: true, upsert: true, runValidators: true }
       );
     } else {

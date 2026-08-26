@@ -29,7 +29,7 @@ const bannerSchema = new mongoose.Schema(
       required: [true, "Banner key is required"],
       unique: true,
       trim: true,
-      enum: ["hero", "bottom"],
+      enum: ["hero", "bottom", "budget"],
     },
     slides: {
       type: [heroSlideSchema],
