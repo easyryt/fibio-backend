@@ -28,25 +28,25 @@ export const DEFAULT_BANNERS = {
     key: "budget",
     slides: [
       {
-        image: { url: "/99.WEBP", fileId: "" },
+        image: { url: "/99.webp", fileId: "" },
         href: "/category/all?maxPrice=99",
         order: 1,
         isActive: true,
       },
       {
-        image: { url: "/149.WEBP", fileId: "" },
+        image: { url: "/149.webp", fileId: "" },
         href: "/category/all?maxPrice=149",
         order: 2,
         isActive: true,
       },
       {
-        image: { url: "/199.WEBP", fileId: "" },
+        image: { url: "/199.webp", fileId: "" },
         href: "/category/all?maxPrice=199",
         order: 3,
         isActive: true,
       },
       {
-        image: { url: "/499.WEBP", fileId: "" },
+        image: { url: "/499.webp", fileId: "" },
         href: "/category/all?maxPrice=499",
         order: 4,
         isActive: true,
@@ -56,7 +56,8 @@ export const DEFAULT_BANNERS = {
   bottom: {
     key: "bottom",
     title: "Buying in Bulk?",
-    subtitle: "Get special tier discounts, customized tax invoices, and personalized quotations for large wholesale orders.",
+    subtitle:
+      "Get special tier discounts, customized tax invoices, and personalized quotations for large wholesale orders.",
     image: { url: "/bottom-banner.webp", fileId: "" },
     href: "/contact-us",
     ctaText: "Request a Quote",
@@ -84,14 +85,15 @@ export const mergeBannersWithDefaults = async (filter = {}) => {
   keys.forEach((key) => {
     if (bannerMap[key]) {
       if (key === "hero" || key === "budget") {
-        let slides = (bannerMap[key].slides && bannerMap[key].slides.length > 0)
-          ? bannerMap[key].slides
-          : DEFAULT_BANNERS[key].slides;
+        let slides =
+          bannerMap[key].slides && bannerMap[key].slides.length > 0
+            ? bannerMap[key].slides
+            : DEFAULT_BANNERS[key].slides;
 
         slides = slides.map((s) => {
           const u = s.image?.url || "";
-          if (typeof u === "string" && u.endsWith(".png") && u.startsWith("/")) {
-            return { ...s, image: { ...s.image, url: u.replace(/\.png$/, ".webp") } };
+          if (typeof u === "string" && (u.startsWith("/") || !u.startsWith("http"))) {
+            return { ...s, image: { ...s.image, url: u.replace(/\.(png|webp)$/i, ".webp") } };
           }
           return s;
         });
@@ -106,9 +108,14 @@ export const mergeBannersWithDefaults = async (filter = {}) => {
           slides: [...slides].sort((a, b) => (a.order || 0) - (b.order || 0)),
         };
       } else {
-        let bottomImg = bannerMap[key]?.image?.url ? bannerMap[key].image : DEFAULT_BANNERS[key].image;
-        if (typeof bottomImg?.url === "string" && bottomImg.url.endsWith(".png") && bottomImg.url.startsWith("/")) {
-          bottomImg = { ...bottomImg, url: bottomImg.url.replace(/\.png$/, ".webp") };
+        let bottomImg = bannerMap[key]?.image?.url
+          ? bannerMap[key].image
+          : DEFAULT_BANNERS[key].image;
+        if (
+          typeof bottomImg?.url === "string" &&
+          (bottomImg.url.startsWith("/") || !bottomImg.url.startsWith("http"))
+        ) {
+          bottomImg = { ...bottomImg, url: bottomImg.url.replace(/\.(png|webp)$/i, ".webp") };
         }
 
         result[key] = {
@@ -117,7 +124,6 @@ export const mergeBannersWithDefaults = async (filter = {}) => {
           image: bottomImg,
         };
       }
-
     } else {
       result[key] = DEFAULT_BANNERS[key];
     }
@@ -180,16 +186,22 @@ export const updateBannerByKey = async (req, res) => {
         });
       }
 
-      const formattedSlides = slides.map((s, idx) => ({
-        _id: s._id,
-        image: {
-          url: s.image?.url || "",
-          fileId: s.image?.fileId || "",
-        },
-        href: s.href || "",
-        order: Number(s.order) || idx + 1,
-        isActive: s.isActive ?? true,
-      }));
+      const formattedSlides = slides.map((s, idx) => {
+        let url = s.image?.url || "";
+        if (typeof url === "string" && (url.startsWith("/") || !url.startsWith("http"))) {
+          url = url.replace(/\.(png|webp)$/i, ".webp");
+        }
+        return {
+          _id: s._id,
+          image: {
+            url,
+            fileId: s.image?.fileId || "",
+          },
+          href: s.href || "",
+          order: Number(s.order) || idx + 1,
+          isActive: s.isActive ?? true,
+        };
+      });
 
       banner = await Banner.findOneAndUpdate(
         { key },
@@ -202,7 +214,13 @@ export const updateBannerByKey = async (req, res) => {
       const updateData = {};
       if (title !== undefined) updateData.title = title;
       if (subtitle !== undefined) updateData.subtitle = subtitle;
-      if (image !== undefined) updateData.image = image;
+      if (image !== undefined) {
+        let imgObj = { ...image };
+        if (typeof imgObj.url === "string" && (imgObj.url.startsWith("/") || !imgObj.url.startsWith("http"))) {
+          imgObj.url = imgObj.url.replace(/\.(png|webp)$/i, ".webp");
+        }
+        updateData.image = imgObj;
+      }
       if (href !== undefined) updateData.href = href;
       if (ctaText !== undefined) updateData.ctaText = ctaText;
       if (isActive !== undefined) updateData.isActive = isActive;
