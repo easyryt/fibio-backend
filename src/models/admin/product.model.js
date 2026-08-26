@@ -46,14 +46,6 @@ const productSchema = new mongoose.Schema(
         position: { type: Number, default: 0 },
       },
     ],
-    seoTitle: {
-      type: String,
-      trim: true,
-    },
-    seoDescription: {
-      type: String,
-      trim: true,
-    },
     optionTypes: [
       {
         name: { type: String, required: true, trim: true },

@@ -256,8 +256,6 @@ export const confirmCsvImport = async (req, res, next) => {
             name: item.product.name,
             slug,
             description: item.product.description,
-            seoTitle: item.product.seoTitle,
-            seoDescription: item.product.seoDescription,
             images: preparedProductImages,
             optionTypes: item.product.optionTypes || [],
             category: categoryId,

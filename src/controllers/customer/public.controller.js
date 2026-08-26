@@ -144,8 +144,7 @@ export const getPublicProductBySlug = async (req, res, next) => {
   try {
     const product = await Product.findOne({ slug: req.params.slug })
       .populate("brand", "name")
-      .populate("category", "_id name")
-      .select("-seoTitle -seoDescription");
+      .populate("category", "_id name");
 
     // 404 for missing or non-active products (don't leak draft/archived)
     if (!product || product.status !== "active") {

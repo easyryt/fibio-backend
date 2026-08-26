@@ -166,14 +166,6 @@ export const createProductSchema = z.object({
 
   images: z.array(imageSchema).optional(),
 
-  seoTitle: z.string().trim().max(120, "SEO Title must be 120 characters or fewer").optional(),
-
-  seoDescription: z
-    .string()
-    .trim()
-    .max(350, "SEO description must be 200 characters or fewer")
-    .optional(),
-
   optionTypes: z
     .array(
       z.object({

@@ -88,8 +88,6 @@ export const HEADER_CANDIDATES = {
   categoryImage: ["Category Image URL", "Category Image"],
   weight: ["Weight value (grams)", "Weight"],
   description: ["Description", "Body (HTML)", "Body"],
-  seoTitle: ["SEO title", "SEO Title"],
-  seoDescription: ["SEO description", "SEO Description"],
 };
 
 const getRowValue = (row, candidateKeys) => {
@@ -283,8 +281,6 @@ export const mapGroupToProduct = async (group) => {
   const productData = {
     name: title,
     description: getRowValue(parentRow, HEADER_CANDIDATES.description),
-    seoTitle: getRowValue(parentRow, HEADER_CANDIDATES.seoTitle),
-    seoDescription: getRowValue(parentRow, HEADER_CANDIDATES.seoDescription),
     images: productImages,
     optionTypes,
     categoryPath: category.path,
