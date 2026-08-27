@@ -6,12 +6,14 @@ import {
   refreshCustomer,
   logoutCustomer,
   getMeCustomer,
+  updateCustomerProfile,
 } from "../../controllers/customer/customerAuth.controller.js";
 import { authenticateCustomer } from "../../middleware/authenticateCustomer.middleware.js";
 import { validate } from "../../middleware/validate.middleware.js";
 import {
   registerCustomerSchema,
   loginCustomerSchema,
+  updateCustomerProfileSchema,
 } from "../../validations/customer/customerAuth.validation.js";
 
 const router = express.Router();
@@ -71,5 +73,18 @@ router.post("/logout", logoutCustomer);
  */
 router.get("/me", authenticateCustomer, getMeCustomer);
 
+/**
+ * @route   PUT /api/customers/auth/profile
+ * @desc    Update customer profile details and addresses
+ * @access  Private (authenticateCustomer)
+ */
+router.put(
+  "/profile",
+  authenticateCustomer,
+  validate(updateCustomerProfileSchema),
+  updateCustomerProfile
+);
+
 export default router;
+
 

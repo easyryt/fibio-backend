@@ -166,3 +166,36 @@ export const getMeCustomer = async (req, res, next) => {
     next(err);
   }
 };
+
+// ---------------- UPDATE PROFILE (protected) ----------------
+export const updateCustomerProfile = async (req, res, next) => {
+  try {
+    const customer = await Customer.findById(req.customer.id);
+    if (!customer) throw new ApiError(404, "Customer not found");
+
+    const { name, phone, addresses } = req.body;
+
+    if (name !== undefined) customer.name = name;
+    if (phone !== undefined) customer.phone = phone;
+    if (addresses !== undefined) customer.addresses = addresses;
+
+    await customer.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      data: {
+        user: {
+          id: customer._id,
+          name: customer.name,
+          email: customer.email,
+          phone: customer.phone,
+          addresses: customer.addresses,
+        },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
