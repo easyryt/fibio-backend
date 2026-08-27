@@ -52,6 +52,11 @@ const productSchema = new mongoose.Schema(
         values: { type: [String], required: true },
       },
     ],
+    seo: {
+      metaTitle: { type: String, trim: true, default: "" },
+      metaDescription: { type: String, trim: true, default: "" },
+      keywords: { type: [String], default: [] },
+    },
   },
   { timestamps: true }
 );

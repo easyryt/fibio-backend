@@ -27,6 +27,11 @@ const categorySchema = new mongoose.Schema(
       url: { type: String, default: "" },
       fileId: { type: String, default: "" },
     },
+    description: {
+      type: String,
+      trim: true,
+      default: "",
+    },
   },
   { timestamps: true }
 );

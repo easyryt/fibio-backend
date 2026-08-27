@@ -88,6 +88,9 @@ export const HEADER_CANDIDATES = {
   categoryImage: ["Category Image URL", "Category Image"],
   weight: ["Weight value (grams)", "Weight"],
   description: ["Description", "Body (HTML)", "Body"],
+  seoTitle: ["SEO Title", "Meta Title", "Page Title"],
+  seoDescription: ["SEO Description", "Meta Description", "Page Description"],
+  seoKeywords: ["SEO Keywords", "Meta Keywords", "Keywords"],
 };
 
 const getRowValue = (row, candidateKeys) => {
@@ -278,6 +281,11 @@ export const mapGroupToProduct = async (group) => {
     values: Array.from(valuesSet),
   }));
 
+  const metaTitle = getRowValue(parentRow, HEADER_CANDIDATES.seoTitle);
+  const metaDescription = getRowValue(parentRow, HEADER_CANDIDATES.seoDescription);
+  const rawKeywords = getRowValue(parentRow, HEADER_CANDIDATES.seoKeywords);
+  const keywords = rawKeywords ? rawKeywords.split(",").map((k) => k.trim()).filter(Boolean) : [];
+
   const productData = {
     name: title,
     description: getRowValue(parentRow, HEADER_CANDIDATES.description),
@@ -289,6 +297,11 @@ export const mapGroupToProduct = async (group) => {
     brandName: vendorStr,
     brandResolved: brand.existing,
     brandId: brand.id,
+    seo: {
+      metaTitle,
+      metaDescription,
+      keywords,
+    },
   };
 
   const allVariantsValid = variants.every((v) => v.valid);

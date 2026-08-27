@@ -38,6 +38,8 @@ export const createCategorySchema = z.object({
     .min(2, "Category name must be at least 2 characters")
     .max(100, "Category name cannot exceed 100 characters"),
 
+  description: z.string().trim().optional(),
+
   parent: objectId.nullable().optional(),
 
   isActive: z.boolean().optional(),
@@ -165,6 +167,14 @@ export const createProductSchema = z.object({
   featured: z.boolean().optional(),
 
   images: z.array(imageSchema).optional(),
+
+  seo: z
+    .object({
+      metaTitle: z.string().trim().optional(),
+      metaDescription: z.string().trim().optional(),
+      keywords: z.array(z.string().trim()).optional(),
+    })
+    .optional(),
 
   optionTypes: z
     .array(

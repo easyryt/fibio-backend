@@ -260,6 +260,7 @@ export const confirmCsvImport = async (req, res, next) => {
             optionTypes: item.product.optionTypes || [],
             category: categoryId,
             brand: brandId,
+            seo: item.product.seo || {},
             status: "draft", // imported products start as draft for admin review
           },
         ],
