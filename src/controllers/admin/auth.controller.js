@@ -6,12 +6,6 @@ import { config } from "../../config/config.js";
 
 const ADMIN_COOKIE_NAME = "refreshToken";
 
-const adminCookieOptions = {
-  httpOnly: true,
-  secure: true,
-  sameSite: "none",
-  maxAge: 7 * 24 * 60 * 60 * 1000,
-};
 
 
 // ---------------- REGISTER (Super Admin only) ----------------
@@ -64,7 +58,7 @@ export const login = async (req, res, next) => {
     user.lastLogin = new Date();
     await user.save();
 
-    res.cookie(ADMIN_COOKIE_NAME, refreshToken, adminCookieOptions);
+    res.cookie(ADMIN_COOKIE_NAME, refreshToken, config.cookieOptions);
 
     res.status(200).json({
       success: true,
@@ -126,7 +120,7 @@ export const refresh = async (req, res, next) => {
       expiresAt: getRefreshTokenExpiryDate(),
     });
 
-    res.cookie(ADMIN_COOKIE_NAME, newRefreshToken, adminCookieOptions);
+    res.cookie(ADMIN_COOKIE_NAME, newRefreshToken, config.cookieOptions);
 
     const newAccessToken = generateAccessToken(user);
 

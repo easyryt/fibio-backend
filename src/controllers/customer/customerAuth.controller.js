@@ -6,15 +6,10 @@ import {
   getRefreshTokenExpiryDate,
 } from "../../utils/token.js";
 import ApiError from "../../utils/apiError.js";
+import { config } from "../../config/config.js";
 
 const COOKIE_NAME = "customerRefreshToken";
 
-const cookieOptions = {
-  httpOnly: true,
-  secure: true,
-  sameSite: "none",
-  maxAge: 7 * 24 * 60 * 60 * 1000,
-};
 
 // ---------------- REGISTER ----------------
 export const registerCustomer = async (req, res, next) => {
@@ -34,7 +29,10 @@ export const registerCustomer = async (req, res, next) => {
     const refreshToken = generateRefreshToken();
 
     // New account — no prior tokens exist, but guard against edge cases
-    await CustomerRefreshToken.updateMany({ customer: customer._id, revoked: false }, { revoked: true });
+    await CustomerRefreshToken.updateMany(
+      { customer: customer._id, revoked: false },
+      { revoked: true }
+    );
 
     await CustomerRefreshToken.create({
       customer: customer._id,
@@ -45,7 +43,7 @@ export const registerCustomer = async (req, res, next) => {
     customer.lastLogin = new Date();
     await customer.save();
 
-    res.cookie(COOKIE_NAME, refreshToken, cookieOptions);
+    res.cookie(COOKIE_NAME, refreshToken, config.cookieOptions);
 
     res.status(201).json({
       success: true,
@@ -67,8 +65,7 @@ export const loginCustomer = async (req, res, next) => {
 
     const customer = await Customer.findOne({ email }).select("+password");
     if (!customer) throw new ApiError(401, "Invalid email or password");
-    if (!customer.isActive)
-      throw new ApiError(403, "This account has been deactivated");
+    if (!customer.isActive) throw new ApiError(403, "This account has been deactivated");
 
     const isMatch = await customer.comparePassword(password);
     if (!isMatch) throw new ApiError(401, "Invalid email or password");
@@ -77,7 +74,10 @@ export const loginCustomer = async (req, res, next) => {
     const refreshToken = generateRefreshToken();
 
     // Revoke all previous active tokens for this customer before issuing a new one.
-    await CustomerRefreshToken.updateMany({ customer: customer._id, revoked: false }, { revoked: true });
+    await CustomerRefreshToken.updateMany(
+      { customer: customer._id, revoked: false },
+      { revoked: true }
+    );
 
     await CustomerRefreshToken.create({
       customer: customer._id,
@@ -88,7 +88,7 @@ export const loginCustomer = async (req, res, next) => {
     customer.lastLogin = new Date();
     await customer.save();
 
-    res.cookie(COOKIE_NAME, refreshToken, cookieOptions);
+    res.cookie(COOKIE_NAME, refreshToken, config.cookieOptions);
 
     res.status(200).json({
       success: true,
@@ -135,7 +135,7 @@ export const refreshCustomer = async (req, res, next) => {
       expiresAt: getRefreshTokenExpiryDate(),
     });
 
-    res.cookie(COOKIE_NAME, newRefreshToken, cookieOptions);
+    res.cookie(COOKIE_NAME, newRefreshToken, config.cookieOptions);
 
     const newAccessToken = generateCustomerAccessToken(customer);
 
@@ -157,10 +157,7 @@ export const logoutCustomer = async (req, res, next) => {
     const rawToken = req.cookies[COOKIE_NAME];
 
     if (rawToken) {
-      await CustomerRefreshToken.findOneAndUpdate(
-        { token: rawToken },
-        { revoked: true }
-      );
+      await CustomerRefreshToken.findOneAndUpdate({ token: rawToken }, { revoked: true });
     }
 
     res.clearCookie(COOKIE_NAME);
@@ -217,4 +214,3 @@ export const updateCustomerProfile = async (req, res, next) => {
     next(err);
   }
 };
-
