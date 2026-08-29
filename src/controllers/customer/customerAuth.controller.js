@@ -33,6 +33,9 @@ export const registerCustomer = async (req, res, next) => {
     const accessToken = generateCustomerAccessToken(customer);
     const refreshToken = generateRefreshToken();
 
+    // New account — no prior tokens exist, but guard against edge cases
+    await CustomerRefreshToken.updateMany({ customer: customer._id, revoked: false }, { revoked: true });
+
     await CustomerRefreshToken.create({
       customer: customer._id,
       token: refreshToken,
@@ -72,6 +75,9 @@ export const loginCustomer = async (req, res, next) => {
 
     const accessToken = generateCustomerAccessToken(customer);
     const refreshToken = generateRefreshToken();
+
+    // Revoke all previous active tokens for this customer before issuing a new one.
+    await CustomerRefreshToken.updateMany({ customer: customer._id, revoked: false }, { revoked: true });
 
     await CustomerRefreshToken.create({
       customer: customer._id,
@@ -117,6 +123,19 @@ export const refreshCustomer = async (req, res, next) => {
     if (!customer || !customer.isActive) {
       throw new ApiError(401, "Customer not found or inactive");
     }
+
+    // Rotate the refresh token: revoke the old one and issue a brand new one.
+    storedToken.revoked = true;
+    await storedToken.save();
+
+    const newRefreshToken = generateRefreshToken();
+    await CustomerRefreshToken.create({
+      customer: customer._id,
+      token: newRefreshToken,
+      expiresAt: getRefreshTokenExpiryDate(),
+    });
+
+    res.cookie(COOKIE_NAME, newRefreshToken, cookieOptions);
 
     const newAccessToken = generateCustomerAccessToken(customer);
 
