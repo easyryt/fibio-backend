@@ -28,10 +28,10 @@ const authLimiter = rateLimit({
   message: { success: false, message: "Too many attempts, please try again later" },
 });
 
-// Lighter limiter for refresh — 30 per 15-minute window.
+// Industry-standard limiter for refresh — 60 per 15-minute window (4/min).
 const refreshLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30,
+  max: 60,
   standardHeaders: true,
   legacyHeaders: false,
   skip: () => process.env.NODE_ENV === "test",

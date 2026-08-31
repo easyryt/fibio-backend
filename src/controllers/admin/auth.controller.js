@@ -89,6 +89,8 @@ export const logout = async (req, res, next) => {
   }
 };
 
+const REFRESH_ROTATION_GRACE_PERIOD_MS = 30 * 1000; // 30 seconds
+
 // ---------------- REFRESH ----------------
 export const refresh = async (req, res, next) => {
   try {
@@ -96,9 +98,40 @@ export const refresh = async (req, res, next) => {
     if (!rawToken) throw new ApiError(401, "No refresh token provided");
 
     const storedToken = await RefreshToken.findOne({ token: rawToken });
-    if (!storedToken || storedToken.revoked) {
+    if (!storedToken) {
+      throw new ApiError(401, "Invalid refresh token");
+    }
+
+    // Grace Period Handling for Token Rotation:
+    // If the presented token was revoked within the last 30 seconds, it's likely a race condition
+    // caused by concurrent requests sent before the browser updated its cookie jar.
+    if (storedToken.revoked) {
+      const isWithinGracePeriod =
+        storedToken.updatedAt &&
+        Date.now() - new Date(storedToken.updatedAt).getTime() < REFRESH_ROTATION_GRACE_PERIOD_MS;
+
+      if (isWithinGracePeriod) {
+        const activeToken = await RefreshToken.findOne({
+          user: storedToken.user,
+          revoked: false,
+          expiresAt: { $gt: new Date() },
+        }).sort({ createdAt: -1 });
+
+        if (activeToken) {
+          const user = await User.findById(storedToken.user);
+          if (user && user.isActive) {
+            const newAccessToken = generateAccessToken(user);
+            return res.status(200).json({
+              success: true,
+              data: { accessToken: newAccessToken },
+            });
+          }
+        }
+      }
+
       throw new ApiError(401, "Invalid or revoked refresh token");
     }
+
     if (storedToken.expiresAt < new Date()) {
       throw new ApiError(401, "Refresh token expired, please log in again");
     }
