@@ -9,7 +9,7 @@ export const getRefreshTokenExpiryDate = () => {
 
 export const generateAccessToken = (user) => {
   return jwt.sign(
-    { id: user._id, role: user.role, name: user.name },
+    { id: user._id.toString(), role: user.role, name: user.name },
     config.jwtSecret.secret,
     { expiresIn: config.jwtSecret.accessExpiry }
   );
@@ -21,7 +21,7 @@ export const generateRefreshToken = () => {
 
 export const generateCustomerAccessToken = (customer) => {
   return jwt.sign(
-    { id: customer._id, name: customer.name, type: "customer" },
+    { id: customer._id.toString(), name: customer.name, type: "customer" },
     config.jwtSecret.secret,
     { expiresIn: config.jwtSecret.accessExpiry }
   );

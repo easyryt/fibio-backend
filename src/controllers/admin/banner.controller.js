@@ -5,18 +5,21 @@ export const DEFAULT_BANNERS = {
     key: "hero",
     slides: [
       {
+        name: "",
         image: { url: "/banner-1.webp", fileId: "" },
         href: "/category/all",
         order: 1,
         isActive: true,
       },
       {
+        name: "",
         image: { url: "/banner-2.webp", fileId: "" },
         href: "/category/all",
         order: 2,
         isActive: true,
       },
       {
+        name: "",
         image: { url: "/banner-3.webp", fileId: "" },
         href: "/category/all",
         order: 3,
@@ -28,24 +31,28 @@ export const DEFAULT_BANNERS = {
     key: "budget",
     slides: [
       {
+        name: "",
         image: { url: "/99.webp", fileId: "" },
         href: "/category/all?maxPrice=99",
         order: 1,
         isActive: true,
       },
       {
+        name: "",
         image: { url: "/149.webp", fileId: "" },
         href: "/category/all?maxPrice=149",
         order: 2,
         isActive: true,
       },
       {
+        name: "",
         image: { url: "/199.webp", fileId: "" },
         href: "/category/all?maxPrice=199",
         order: 3,
         isActive: true,
       },
       {
+        name: "",
         image: { url: "/499.webp", fileId: "" },
         href: "/category/all?maxPrice=499",
         order: 4,
@@ -193,6 +200,7 @@ export const updateBannerByKey = async (req, res) => {
         }
         return {
           _id: s._id,
+          name: s.name || "",
           image: {
             url,
             fileId: s.image?.fileId || "",
@@ -206,7 +214,7 @@ export const updateBannerByKey = async (req, res) => {
       banner = await Banner.findOneAndUpdate(
         { key },
         { $set: { key, slides: formattedSlides } },
-        { new: true, upsert: true, runValidators: true }
+        { returnDocument: "after", upsert: true, runValidators: true }
       );
     } else {
       const { title, subtitle, image, href, ctaText, isActive } = req.body;
@@ -228,7 +236,7 @@ export const updateBannerByKey = async (req, res) => {
       banner = await Banner.findOneAndUpdate(
         { key: "bottom" },
         { $set: updateData },
-        { new: true, upsert: true, runValidators: true }
+        { returnDocument: "after", upsert: true, runValidators: true }
       );
     }
 

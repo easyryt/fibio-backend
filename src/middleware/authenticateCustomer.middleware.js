@@ -34,7 +34,8 @@ export const authenticateCustomer = async (req, res, next) => {
       return next(new ApiError(401, "Access token expired"));
     }
     if (err.name === "JsonWebTokenError") {
-      return next(new ApiError(401, "Invalid token"));
+      const message = config.nodeEnv === "development" ? `Invalid token: ${err.message}` : "Invalid token";
+      return next(new ApiError(401, message));
     }
     next(err);
   }

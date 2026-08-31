@@ -2,6 +2,10 @@ import mongoose from "mongoose";
 
 const heroSlideSchema = new mongoose.Schema(
   {
+    name: {
+      type: String,
+      default: "",
+    },
     image: {
       url: { type: String, default: "" },
       fileId: { type: String, default: "" },

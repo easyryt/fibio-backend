@@ -9,6 +9,16 @@ export const errorHandler = (err, req, res, next) => {
   let statusCode = err.statusCode || 500;
   let message = err.message || 'Internal Server Error';
 
+  // Handle Multer upload errors (e.g. file size limit exceeded)
+  if (err.name === 'MulterError' || err.code === 'LIMIT_FILE_SIZE') {
+    statusCode = 400;
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      message = 'File size exceeds maximum limit of 5MB. Please upload an image smaller than 5MB.';
+    } else {
+      message = `Upload error: ${err.message}`;
+    }
+  }
+
   // Handle Mongoose CastError (e.g. invalid ObjectId format)
   if (err.name === 'CastError') {
     statusCode = 400;

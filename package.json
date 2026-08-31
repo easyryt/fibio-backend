@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "prepare": "husky",
+    "prepare": "node -e \"if(process.env.NODE_ENV!=='production'){require('child_process').execSync('husky',{stdio:'inherit'})}\"",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --runInBand"
