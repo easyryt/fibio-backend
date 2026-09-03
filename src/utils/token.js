@@ -18,11 +18,3 @@ export const generateAccessToken = (user) => {
 export const generateRefreshToken = () => {
   return crypto.randomBytes(40).toString("hex");
 };
-
-export const generateCustomerAccessToken = (customer) => {
-  return jwt.sign(
-    { id: customer._id.toString(), name: customer.name, type: "customer" },
-    config.jwtSecret.secret,
-    { expiresIn: config.jwtSecret.accessExpiry }
-  );
-};

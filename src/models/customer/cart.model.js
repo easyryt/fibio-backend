@@ -4,7 +4,7 @@ const cartSchema = new mongoose.Schema(
   {
     customer: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Customer",
+      ref: "CustomerProfile",
       required: true,
       unique: true, // one cart per customer
     },

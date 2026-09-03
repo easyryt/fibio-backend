@@ -1,28 +1,21 @@
+import { jest, describe, it, expect, beforeAll, afterEach, afterAll } from "@jest/globals";
 import request from "supertest";
-import app from "../app.js";
-import User from "../models/admin/user.model.js";
-import Customer from "../models/customer/customer.model.js";
-import CustomerRefreshToken from "../models/customer/customerRefreshToken.model.js";
+import express from "express";
+import mongoose from "mongoose";
 import { connectTestDB, closeTestDB, clearTestDB } from "./setup.js";
+import { createTestCustomerAuth, getTestCustomerAuthHandler } from "../config/customerAuth.test.config.js";
 
-// ─── shared fixtures ───────────────────────────────────────────────────────
-const CUSTOMER = {
-  name: "Jane Doe",
-  email: "jane@test.com",
-  password: "Secret123!",
-  phone: "555-0100",
-};
+let testApp;
 
-const SELLER = {
-  name: "Admin User",
-  email: "admin@test.com",
-  password: "Admin123!",
-  role: "admin",
-};
-
-// ─── lifecycle ──────────────────────────────────────────────────────────────
 beforeAll(async () => {
   await connectTestDB();
+  await createTestCustomerAuth();
+
+  testApp = express();
+  testApp.all("/api/v1/customers/auth/*splat", (req, res, next) => {
+    return getTestCustomerAuthHandler()(req, res, next);
+  });
+  testApp.use(express.json());
 });
 
 afterEach(async () => {
@@ -33,424 +26,168 @@ afterAll(async () => {
   await closeTestDB();
 });
 
-// ────────────────────────────────────────────────────────────────────────────
-// 1. REGISTER
-// ────────────────────────────────────────────────────────────────────────────
-describe("POST /api/customers/auth/register", () => {
-  it("registers a customer and immediately returns an accessToken + sets customerRefreshToken cookie", async () => {
-    const res = await request(app)
-      .post("/api/customers/auth/register")
-      .send(CUSTOMER);
-
-    expect(res.status).toBe(201);
-    expect(res.body.success).toBe(true);
-    expect(res.body.data.accessToken).toBeDefined();
-    expect(res.body.data.user.email).toBe(CUSTOMER.email);
-
-    // cookie must be named 'customerRefreshToken', NOT 'refreshToken'
-    const cookies = res.headers["set-cookie"];
-    expect(cookies).toBeDefined();
-    const cookieNames = cookies.map((c) => c.split("=")[0]);
-    expect(cookieNames).toContain("customerRefreshToken");
-    expect(cookieNames).not.toContain("refreshToken");
-  });
-
-  it("rejects registration with a duplicate email", async () => {
-    await request(app).post("/api/customers/auth/register").send(CUSTOMER);
-    const res = await request(app)
-      .post("/api/customers/auth/register")
-      .send(CUSTOMER);
-
-    expect(res.status).toBe(409);
-  });
-
-  it("rejects if name is too short (< 2 chars)", async () => {
-    const res = await request(app)
-      .post("/api/customers/auth/register")
-      .send({ ...CUSTOMER, name: "X" });
-
-    expect(res.status).toBe(400);
-  });
-
-  it("rejects if password is too short (< 6 chars)", async () => {
-    const res = await request(app)
-      .post("/api/customers/auth/register")
-      .send({ ...CUSTOMER, password: "abc" });
-
-    expect(res.status).toBe(400);
-  });
-
-  it("rejects if email is malformed", async () => {
-    const res = await request(app)
-      .post("/api/customers/auth/register")
-      .send({ ...CUSTOMER, email: "not-an-email" });
-
-    expect(res.status).toBe(400);
-  });
-
-  it("accepts registration without optional phone field", async () => {
-    const { phone, ...withoutPhone } = CUSTOMER;
-    const res = await request(app)
-      .post("/api/customers/auth/register")
-      .send(withoutPhone);
-
-    expect(res.status).toBe(201);
-  });
-
-  it("does NOT store plaintext password — Customer document must have a bcrypt hash", async () => {
-    await request(app).post("/api/customers/auth/register").send(CUSTOMER);
-
-    const doc = await Customer.findOne({ email: CUSTOMER.email }).select(
-      "+password"
-    );
-    expect(doc).not.toBeNull();
-    expect(doc.password).not.toBe(CUSTOMER.password);
-    expect(doc.password).toMatch(/^\$2[ab]\$/); // bcrypt prefix
-  });
-});
-
-// ────────────────────────────────────────────────────────────────────────────
-// 2. LOGIN
-// ────────────────────────────────────────────────────────────────────────────
-describe("POST /api/customers/auth/login", () => {
-  beforeEach(async () => {
-    await request(app).post("/api/customers/auth/register").send(CUSTOMER);
-  });
-
-  it("logs in with correct credentials and sets customerRefreshToken cookie", async () => {
-    const res = await request(app)
-      .post("/api/customers/auth/login")
-      .send({ email: CUSTOMER.email, password: CUSTOMER.password });
+describe("Customer Auth - Phone Number Uniqueness Regression Tests", () => {
+  it("allows registration for the first user with phone A", async () => {
+    const res = await request(testApp)
+      .post("/api/v1/customers/auth/sign-up/email")
+      .set("Origin", "http://localhost:3000")
+      .send({
+        name: "User One",
+        email: "user1@example.com",
+        password: "Password123!",
+        phoneNumber: "+15550001111",
+      });
 
     expect(res.status).toBe(200);
-    expect(res.body.data.accessToken).toBeDefined();
-
-    const cookies = res.headers["set-cookie"];
-    expect(cookies).toBeDefined();
-    expect(cookies.some((c) => c.startsWith("customerRefreshToken="))).toBe(
-      true
-    );
+    expect(res.body.user).toBeDefined();
+    expect(res.body.user.email).toBe("user1@example.com");
+    expect(res.body.user.phoneNumber).toBe("+15550001111");
   });
 
-  it("updates lastLogin on successful login", async () => {
-    await request(app)
-      .post("/api/customers/auth/login")
-      .send({ email: CUSTOMER.email, password: CUSTOMER.password });
+  it("rejects registration for a second user with the same phone A (email 2)", async () => {
+    // Register first user
+    await request(testApp)
+      .post("/api/v1/customers/auth/sign-up/email")
+      .set("Origin", "http://localhost:3000")
+      .send({
+        name: "User One",
+        email: "user1@example.com",
+        password: "Password123!",
+        phoneNumber: "+15550001111",
+      });
 
-    const doc = await Customer.findOne({ email: CUSTOMER.email });
-    expect(doc.lastLogin).toBeDefined();
-    expect(doc.lastLogin).toBeInstanceOf(Date);
+    // Attempt second user with same phone number
+    const res = await request(testApp)
+      .post("/api/v1/customers/auth/sign-up/email")
+      .set("Origin", "http://localhost:3000")
+      .send({
+        name: "User Two",
+        email: "user2@example.com",
+        password: "Password123!",
+        phoneNumber: "+15550001111",
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe("User with this phone number already exists");
   });
 
-  it("rejects wrong password with 401", async () => {
-    const res = await request(app)
-      .post("/api/customers/auth/login")
-      .send({ email: CUSTOMER.email, password: "WrongPass!" });
+  it("allows registration for a second user with phone B (different phone number)", async () => {
+    // Register first user
+    await request(testApp)
+      .post("/api/v1/customers/auth/sign-up/email")
+      .set("Origin", "http://localhost:3000")
+      .send({
+        name: "User One",
+        email: "user1@example.com",
+        password: "Password123!",
+        phoneNumber: "+15550001111",
+      });
 
-    expect(res.status).toBe(401);
-  });
-
-  it("rejects unknown email with 401", async () => {
-    const res = await request(app)
-      .post("/api/customers/auth/login")
-      .send({ email: "ghost@test.com", password: CUSTOMER.password });
-
-    expect(res.status).toBe(401);
-  });
-
-  it("rejects a deactivated customer with 403", async () => {
-    await Customer.findOneAndUpdate(
-      { email: CUSTOMER.email },
-      { isActive: false }
-    );
-
-    const res = await request(app)
-      .post("/api/customers/auth/login")
-      .send({ email: CUSTOMER.email, password: CUSTOMER.password });
-
-    expect(res.status).toBe(403);
-  });
-});
-
-// ────────────────────────────────────────────────────────────────────────────
-// 3. REFRESH
-// ────────────────────────────────────────────────────────────────────────────
-describe("POST /api/customers/auth/refresh", () => {
-  let customerRefreshCookie;
-
-  beforeEach(async () => {
-    await request(app).post("/api/customers/auth/register").send(CUSTOMER);
-    const loginRes = await request(app)
-      .post("/api/customers/auth/login")
-      .send({ email: CUSTOMER.email, password: CUSTOMER.password });
-
-    customerRefreshCookie = loginRes.headers["set-cookie"]
-      .find((c) => c.startsWith("customerRefreshToken="))
-      ?.split(";")[0]; // "customerRefreshToken=<value>"
-  });
-
-  it("returns a new accessToken when given a valid customerRefreshToken cookie", async () => {
-    const res = await request(app)
-      .post("/api/customers/auth/refresh")
-      .set("Cookie", customerRefreshCookie);
+    // Register second user with different phone number
+    const res = await request(testApp)
+      .post("/api/v1/customers/auth/sign-up/email")
+      .set("Origin", "http://localhost:3000")
+      .send({
+        name: "User Two",
+        email: "user2@example.com",
+        password: "Password123!",
+        phoneNumber: "+15550002222",
+      });
 
     expect(res.status).toBe(200);
-    expect(res.body.data.accessToken).toBeDefined();
+    expect(res.body.user).toBeDefined();
+    expect(res.body.user.email).toBe("user2@example.com");
+    expect(res.body.user.phoneNumber).toBe("+15550002222");
   });
 
-  it("returns 401 when no cookie is sent", async () => {
-    const res = await request(app).post("/api/customers/auth/refresh");
-    expect(res.status).toBe(401);
+  it("allows multiple users without a phone number due to sparse indexing", async () => {
+    const res1 = await request(testApp)
+      .post("/api/v1/customers/auth/sign-up/email")
+      .set("Origin", "http://localhost:3000")
+      .send({
+        name: "User Without Phone 1",
+        email: "nophone1@example.com",
+        password: "Password123!",
+      });
+
+    const res2 = await request(testApp)
+      .post("/api/v1/customers/auth/sign-up/email")
+      .set("Origin", "http://localhost:3000")
+      .send({
+        name: "User Without Phone 2",
+        email: "nophone2@example.com",
+        password: "Password123!",
+      });
+
+    expect(res1.status).toBe(200);
+    expect(res2.status).toBe(200);
   });
 
-  it("returns 401 when the token has been revoked", async () => {
-    // Extract raw token value from cookie string
-    const rawToken = customerRefreshCookie.split("=")[1];
-    await CustomerRefreshToken.findOneAndUpdate(
-      { token: rawToken },
-      { revoked: true }
-    );
+  it("re-throws createIndex failure in createCustomerAuth to prevent initialization without unique index", async () => {
+    const { createCustomerAuth } = await import("../config/customerAuth.js");
+    const db = mongoose.connection.db;
+    const indexError = new Error("Index creation failed due to duplicate keys");
 
-    const res = await request(app)
-      .post("/api/customers/auth/refresh")
-      .set("Cookie", customerRefreshCookie);
+    const spy = jest.spyOn(db, "collection").mockReturnValueOnce({
+      createIndex: jest.fn().mockRejectedValueOnce(indexError),
+    });
 
-    expect(res.status).toBe(401);
-  });
+    await expect(createCustomerAuth()).rejects.toThrow("Index creation failed due to duplicate keys");
 
-  it("returns 401 when the token is expired", async () => {
-    const rawToken = customerRefreshCookie.split("=")[1];
-    await CustomerRefreshToken.findOneAndUpdate(
-      { token: rawToken },
-      { expiresAt: new Date(Date.now() - 1000) } // force-expired
-    );
-
-    const res = await request(app)
-      .post("/api/customers/auth/refresh")
-      .set("Cookie", customerRefreshCookie);
-
-    expect(res.status).toBe(401);
+    spy.mockRestore();
   });
 });
 
-// ────────────────────────────────────────────────────────────────────────────
-// 4. LOGOUT
-// ────────────────────────────────────────────────────────────────────────────
-describe("POST /api/customers/auth/logout", () => {
-  let customerRefreshCookie;
+describe("Customer Auth - baseURL validation in production", () => {
+  const originalEnv = process.env.NODE_ENV;
+  const originalBetterAuthUrl = process.env.BETTER_AUTH_URL;
 
-  beforeEach(async () => {
-    await request(app).post("/api/customers/auth/register").send(CUSTOMER);
-    const loginRes = await request(app)
-      .post("/api/customers/auth/login")
-      .send({ email: CUSTOMER.email, password: CUSTOMER.password });
-
-    customerRefreshCookie = loginRes.headers["set-cookie"]
-      .find((c) => c.startsWith("customerRefreshToken="))
-      ?.split(";")[0];
-  });
-
-  it("logs out and revokes the token in the DB", async () => {
-    const rawToken = customerRefreshCookie.split("=")[1];
-
-    const logoutRes = await request(app)
-      .post("/api/customers/auth/logout")
-      .set("Cookie", customerRefreshCookie);
-
-    expect(logoutRes.status).toBe(200);
-
-    const stored = await CustomerRefreshToken.findOne({ token: rawToken });
-    expect(stored.revoked).toBe(true);
-  });
-
-  it("clears the customerRefreshToken cookie on logout", async () => {
-    const res = await request(app)
-      .post("/api/customers/auth/logout")
-      .set("Cookie", customerRefreshCookie);
-
-    const setCookie = res.headers["set-cookie"] ?? [];
-    const clearedCookie = setCookie.find((c) =>
-      c.startsWith("customerRefreshToken=")
-    );
-    // A cleared cookie will have Max-Age=0 or an expired date
-    if (clearedCookie) {
-      expect(clearedCookie).toMatch(/Max-Age=0|Expires=.*1970/i);
+  afterEach(() => {
+    process.env.NODE_ENV = originalEnv;
+    if (originalBetterAuthUrl !== undefined) {
+      process.env.BETTER_AUTH_URL = originalBetterAuthUrl;
     } else {
-      // Some supertest versions omit the header entirely when value is empty string
-      expect(true).toBe(true);
+      delete process.env.BETTER_AUTH_URL;
     }
   });
 
-  it("still responds 200 gracefully if no cookie is present", async () => {
-    const res = await request(app).post("/api/customers/auth/logout");
-    expect(res.status).toBe(200);
-  });
-});
+  it("throws when BETTER_AUTH_URL is missing in production", async () => {
+    const { createCustomerAuth } = await import("../config/customerAuth.js");
+    process.env.NODE_ENV = "production";
+    delete process.env.BETTER_AUTH_URL;
 
-// ────────────────────────────────────────────────────────────────────────────
-// 5. GET ME (protected)
-// ────────────────────────────────────────────────────────────────────────────
-describe("GET /api/customers/auth/me", () => {
-  let customerAccessToken;
-
-  beforeEach(async () => {
-    const res = await request(app)
-      .post("/api/customers/auth/register")
-      .send(CUSTOMER);
-    customerAccessToken = res.body.data.accessToken;
-  });
-
-  it("returns the customer profile for a valid customer token", async () => {
-    const res = await request(app)
-      .get("/api/customers/auth/me")
-      .set("Authorization", `Bearer ${customerAccessToken}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.data.customer.email).toBe(CUSTOMER.email);
-    expect(res.body.data.customer.name).toBe(CUSTOMER.name);
-    // password must NOT be returned (select: false)
-    expect(res.body.data.customer.password).toBeUndefined();
-  });
-
-  it("returns 401 when no token is sent", async () => {
-    const res = await request(app).get("/api/customers/auth/me");
-    expect(res.status).toBe(401);
-  });
-
-  it("returns 401 for a deactivated customer even with a valid token", async () => {
-    await Customer.findOneAndUpdate(
-      { email: CUSTOMER.email },
-      { isActive: false }
+    await expect(createCustomerAuth()).rejects.toThrow(
+      "BETTER_AUTH_URL environment variable is required in production"
     );
-
-    const res = await request(app)
-      .get("/api/customers/auth/me")
-      .set("Authorization", `Bearer ${customerAccessToken}`);
-
-    expect(res.status).toBe(403);
-  });
-});
-
-// ────────────────────────────────────────────────────────────────────────────
-// 6. CROSS-TOKEN REJECTION (security-critical)
-// ────────────────────────────────────────────────────────────────────────────
-describe("Cross-token rejection", () => {
-  let sellerAccessToken;
-  let customerAccessToken;
-
-  beforeEach(async () => {
-    // Create and log in a seller (User)
-    await User.create(SELLER);
-    const sellerLogin = await request(app)
-      .post("/api/auth/login")
-      .send({ email: SELLER.email, password: SELLER.password });
-    sellerAccessToken = sellerLogin.body.data.accessToken;
-
-    // Register and get a customer token
-    const customerReg = await request(app)
-      .post("/api/customers/auth/register")
-      .send(CUSTOMER);
-    customerAccessToken = customerReg.body.data.accessToken;
   });
 
-  it("authenticateCustomer rejects a valid SELLER token (no type:customer claim) with 401", async () => {
-    const res = await request(app)
-      .get("/api/customers/auth/me")
-      .set("Authorization", `Bearer ${sellerAccessToken}`);
+  it("throws when BETTER_AUTH_URL is HTTP in production", async () => {
+    const { createCustomerAuth } = await import("../config/customerAuth.js");
+    process.env.NODE_ENV = "production";
+    process.env.BETTER_AUTH_URL = "http://auth.example.com";
 
-    // seller token has no type:"customer" claim — must be rejected
-    expect(res.status).toBe(401);
-  });
-
-  it("seller authenticate middleware now EXPLICITLY rejects a CUSTOMER token (type:\"customer\" claim) with 401", async () => {
-    // authenticate now checks decoded.type === "customer" and throws ApiError(401)
-    // before ever reaching the controller — no longer fails by coincidence via
-    // User.findById returning null.
-    const res = await request(app)
-      .get("/api/users/me")
-      .set("Authorization", `Bearer ${customerAccessToken}`);
-
-    expect(res.status).toBe(401);
-  });
-
-  it("customer token payload contains type:'customer'; seller token payload does NOT", () => {
-    // Decode without verifying (just inspect the claim structure)
-    const decodePayload = (token) =>
-      JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString());
-
-    const customerPayload = decodePayload(customerAccessToken);
-    const sellerPayload = decodePayload(sellerAccessToken);
-
-    expect(customerPayload.type).toBe("customer");
-    expect(sellerPayload.type).toBeUndefined(); // seller tokens have no type claim
-  });
-});
-
-// ────────────────────────────────────────────────────────────────────────────
-// 7. COOKIE COLLISION CHECK (same domain, different sessions)
-// ────────────────────────────────────────────────────────────────────────────
-describe("Cookie collision — seller and customer cookies must not share names", () => {
-  it("seller login sets 'refreshToken' cookie and customer login sets 'customerRefreshToken' — never the other way around", async () => {
-    await User.create(SELLER);
-    const sellerRes = await request(app)
-      .post("/api/auth/login")
-      .send({ email: SELLER.email, password: SELLER.password });
-
-    const customerRes = await request(app)
-      .post("/api/customers/auth/register")
-      .send(CUSTOMER);
-
-    const sellerCookies = (sellerRes.headers["set-cookie"] ?? []).map(
-      (c) => c.split("=")[0]
+    await expect(createCustomerAuth()).rejects.toThrow(
+      "BETTER_AUTH_URL must be a valid public HTTPS origin in production"
     );
-    const customerCookies = (customerRes.headers["set-cookie"] ?? []).map(
-      (c) => c.split("=")[0]
+  });
+
+  it("throws when BETTER_AUTH_URL is localhost in production", async () => {
+    const { createCustomerAuth } = await import("../config/customerAuth.js");
+    process.env.NODE_ENV = "production";
+    process.env.BETTER_AUTH_URL = "https://localhost:5000";
+
+    await expect(createCustomerAuth()).rejects.toThrow(
+      "BETTER_AUTH_URL must be a valid public HTTPS origin in production"
     );
-
-    // Seller sets refreshToken, NOT customerRefreshToken
-    expect(sellerCookies).toContain("refreshToken");
-    expect(sellerCookies).not.toContain("customerRefreshToken");
-
-    // Customer sets customerRefreshToken, NOT refreshToken
-    expect(customerCookies).toContain("customerRefreshToken");
-    expect(customerCookies).not.toContain("refreshToken");
   });
 
-  it("a seller refresh token cookie is ignored by the customer refresh endpoint", async () => {
-    await User.create(SELLER);
-    const sellerLogin = await request(app)
-      .post("/api/auth/login")
-      .send({ email: SELLER.email, password: SELLER.password });
+  it("allows valid public HTTPS origin in production", async () => {
+    const { createCustomerAuth } = await import("../config/customerAuth.js");
+    process.env.NODE_ENV = "production";
+    process.env.BETTER_AUTH_URL = "https://auth.example.com";
 
-    // Extract the seller's refreshToken cookie
-    const sellerRefreshCookie = sellerLogin.headers["set-cookie"]
-      .find((c) => c.startsWith("refreshToken="))
-      ?.split(";")[0];
-
-    // Send the SELLER cookie to the CUSTOMER refresh endpoint
-    const res = await request(app)
-      .post("/api/customers/auth/refresh")
-      .set("Cookie", sellerRefreshCookie);
-
-    // Must fail — the customer endpoint only reads 'customerRefreshToken'
-    expect(res.status).toBe(401);
-  });
-
-  it("a customer refresh token cookie is ignored by the seller refresh endpoint", async () => {
-    const customerReg = await request(app)
-      .post("/api/customers/auth/register")
-      .send(CUSTOMER);
-
-    const customerRefreshCookie = customerReg.headers["set-cookie"]
-      .find((c) => c.startsWith("customerRefreshToken="))
-      ?.split(";")[0];
-
-    // Send the CUSTOMER cookie to the SELLER refresh endpoint
-    const res = await request(app)
-      .post("/api/auth/refresh")
-      .set("Cookie", customerRefreshCookie);
-
-    // Must fail — the seller endpoint only reads 'refreshToken'
-    expect(res.status).toBe(401);
+    const instance = await createCustomerAuth();
+    expect(instance).toBeDefined();
+    expect(instance.options.baseURL).toBe("https://auth.example.com");
   });
 });

@@ -37,11 +37,11 @@ async function populatedWishlist(wishlistId) {
 // ---------------- GET /api/customers/wishlist ----------------
 export const getWishlist = async (req, res, next) => {
   try {
-    let wishlist = await Wishlist.findOne({ customer: req.customer.id });
+    let wishlist = await Wishlist.findOne({ customer: req.customerProfile._id });
 
     if (!wishlist) {
       // find-or-create: return empty wishlist instead of 404
-      wishlist = await Wishlist.create({ customer: req.customer.id, products: [] });
+      wishlist = await Wishlist.create({ customer: req.customerProfile._id, products: [] });
     }
 
     const data = await populatedWishlist(wishlist._id);
@@ -60,9 +60,9 @@ export const addToWishlist = async (req, res, next) => {
     if (!product) throw new ApiError(404, "Product not found");
     if (product.status !== "active") throw new ApiError(400, "Product is not available");
 
-    let wishlist = await Wishlist.findOne({ customer: req.customer.id });
+    let wishlist = await Wishlist.findOne({ customer: req.customerProfile._id });
     if (!wishlist) {
-      wishlist = await Wishlist.create({ customer: req.customer.id, products: [] });
+      wishlist = await Wishlist.create({ customer: req.customerProfile._id, products: [] });
     }
 
     const alreadyPresent = wishlist.products.some(
@@ -86,7 +86,7 @@ export const removeFromWishlist = async (req, res, next) => {
   try {
     const { productId } = req.params;
 
-    const wishlist = await Wishlist.findOne({ customer: req.customer.id });
+    const wishlist = await Wishlist.findOne({ customer: req.customerProfile._id });
     if (!wishlist) throw new ApiError(404, "Wishlist not found");
 
     wishlist.products = wishlist.products.filter(

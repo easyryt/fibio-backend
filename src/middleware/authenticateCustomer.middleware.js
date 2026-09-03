@@ -1,42 +1,30 @@
-import jwt from "jsonwebtoken";
-import { config } from "../config/config.js";
+import { fromNodeHeaders } from "better-auth/node";
+import { getCustomerAuth } from "../config/customerAuth.js";
+import CustomerProfile from "../models/customer/customer.model.js";
 import ApiError from "../utils/apiError.js";
-import Customer from "../models/customer/customer.model.js";
 
 export const authenticateCustomer = async (req, res, next) => {
   try {
-    const authHeader = req.headers.authorization;
+    const customerAuth = getCustomerAuth();
+    const session = await customerAuth.api.getSession({
+      headers: fromNodeHeaders(req.headers),
+    });
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      throw new ApiError(401, "No token provided");
+    if (!session || !session.user) {
+      throw new ApiError(401, "Unauthorized: Invalid or expired customer session");
     }
 
-    const token = authHeader.split(" ")[1];
-    const decoded = jwt.verify(token, config.jwtSecret.secret);
+    const customerProfile = await CustomerProfile.findOneAndUpdate(
+      { authUserId: session.user.id },
+      { $setOnInsert: { authUserId: session.user.id } },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
-    // Reject tokens that are not specifically customer tokens
-    if (decoded.type !== "customer") {
-      throw new ApiError(401, "Invalid token type");
-    }
-
-    const customer = await Customer.findById(decoded.id);
-    if (!customer) {
-      throw new ApiError(401, "Customer not found");
-    }
-    if (!customer.isActive) {
-      throw new ApiError(403, "This account has been deactivated");
-    }
-
-    req.customer = { id: customer._id, name: customer.name };
+    req.customer = session.user;
+    req.customerProfile = customerProfile;
+    req.session = session.session;
     next();
   } catch (err) {
-    if (err.name === "TokenExpiredError") {
-      return next(new ApiError(401, "Access token expired"));
-    }
-    if (err.name === "JsonWebTokenError") {
-      const message = config.nodeEnv === "development" ? `Invalid token: ${err.message}` : "Invalid token";
-      return next(new ApiError(401, message));
-    }
     next(err);
   }
 };

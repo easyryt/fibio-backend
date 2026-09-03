@@ -15,6 +15,7 @@
   "keywords": [],
   "dependencies": {
     "bcrypt": "^6.0.0",
+    "better-auth": "^1.7.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "csv-parse": "^7.0.1",

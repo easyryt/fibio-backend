@@ -14,12 +14,12 @@ const populateCart = (cartId) =>
 export const getCart = async (req, res, next) => {
   try {
     let cart = await populateCart(
-      (await Cart.findOne({ customer: req.customer.id }))?._id
+      (await Cart.findOne({ customer: req.customerProfile._id }))?._id
     );
 
     if (!cart) {
       // find-or-create: return an empty cart instead of 404
-      cart = await Cart.create({ customer: req.customer.id, items: [] });
+      cart = await Cart.create({ customer: req.customerProfile._id, items: [] });
     }
 
     res.status(200).json({ success: true, data: cart });
@@ -37,9 +37,9 @@ export const addToCart = async (req, res, next) => {
     if (!variant) throw new ApiError(404, "Variant not found");
     if (!variant.isActive) throw new ApiError(400, "This variant is no longer available");
 
-    let cart = await Cart.findOne({ customer: req.customer.id });
+    let cart = await Cart.findOne({ customer: req.customerProfile._id });
     if (!cart) {
-      cart = await Cart.create({ customer: req.customer.id, items: [] });
+      cart = await Cart.create({ customer: req.customerProfile._id, items: [] });
     }
 
     const existingItem = cart.items.find(
@@ -85,7 +85,7 @@ export const updateCartItem = async (req, res, next) => {
     const { variantId } = req.params;
     const { quantity } = req.body;
 
-    const cart = await Cart.findOne({ customer: req.customer.id });
+    const cart = await Cart.findOne({ customer: req.customerProfile._id });
     if (!cart) throw new ApiError(404, "Cart not found");
 
     const itemIndex = cart.items.findIndex(
@@ -130,7 +130,7 @@ export const removeCartItem = async (req, res, next) => {
   try {
     const { variantId } = req.params;
 
-    const cart = await Cart.findOne({ customer: req.customer.id });
+    const cart = await Cart.findOne({ customer: req.customerProfile._id });
     if (!cart) throw new ApiError(404, "Cart not found");
 
     cart.items = cart.items.filter(
@@ -149,7 +149,7 @@ export const removeCartItem = async (req, res, next) => {
 // ---------------- DELETE /api/customers/cart ----------------
 export const clearCart = async (req, res, next) => {
   try {
-    const cart = await Cart.findOne({ customer: req.customer.id });
+    const cart = await Cart.findOne({ customer: req.customerProfile._id });
     if (!cart) throw new ApiError(404, "Cart not found");
 
     cart.items = [];
